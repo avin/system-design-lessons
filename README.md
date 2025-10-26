@@ -10,29 +10,29 @@
 ## Структура курса
 
 ### Блок 1: Фундамент
-1. [Введение в System Design](lessons/01-vvedenie-v-system-design.md)
+1. [Введение в System Design](lessons/01-introduction-to-system-design.md)
 2. [Back-of-the-envelope calculations](lessons/02-back-of-the-envelope-calculations.md)
 3. [Latency numbers](lessons/03-latency-numbers.md)
-4. [Функциональные и нефункциональные требования](lessons/04-funkcionalnye-i-nefunkcionalnye-trebovaniya.md)
-5. [CAP теорема, ACID vs BASE](lessons/05-cap-teorema-acid-vs-base.md)
+4. [Функциональные и нефункциональные требования](lessons/04-functional-vs-nonfunctional-requirements.md)
+5. [CAP теорема, ACID vs BASE](lessons/05-cap-theorem-acid-vs-base.md)
 6. [Consistent Hashing](lessons/06-consistent-hashing.md)
-7. [DNS и основы работы интернета](lessons/07-dns-i-osnovy-raboty-interneta.md)
+7. [DNS и основы работы интернета](lessons/07-dns-and-internet-basics.md)
 
 ### Блок 2: Networking & Communication
 8. [API Design: REST, GraphQL, gRPC](lessons/08-api-design-rest-graphql-grpc.md)
 9. [WebSockets, SSE и long polling](lessons/09-websockets-sse-long-polling.md)
-10. [Load Balancing: алгоритмы, L4 vs L7](lessons/10-load-balancing-algoritmy-l4-vs-l7.md)
-11. [API Gateway и reverse proxy](lessons/11-api-gateway-i-reverse-proxy.md)
-12. [Rate Limiting: алгоритмы и стратегии](lessons/12-rate-limiting-algoritmy.md)
+10. [Load Balancing: алгоритмы, L4 vs L7](lessons/10-load-balancing-algorithms-l4-vs-l7.md)
+11. [API Gateway и reverse proxy](lessons/11-api-gateway-and-reverse-proxy.md)
+12. [Rate Limiting: алгоритмы и стратегии](lessons/12-rate-limiting-algorithms.md)
 
 ### Блок 3: Storage & Data
 13. [SQL vs NoSQL](lessons/13-sql-vs-nosql.md)
 14. [Database Indexes](lessons/14-database-indexes.md)
-15. [Репликация: master-slave и master-master](lessons/15-replikaciya-master-slave-master-master.md)
-16. [Шардирование: стратегии](lessons/16-shardirovanie-strategii.md)
-17. [Денормализация](lessons/17-denormalizaciya.md)
-18. [Blob Storage и CDN](lessons/18-blob-storage-i-cdn.md)
-19. [Кеширование: стратегии](lessons/19-keshirovanie-strategii.md)
+15. [Репликация: master-slave и master-master](lessons/15-master-slave-and-multi-master-replication.md)
+16. [Шардирование: стратегии](lessons/16-sharding-strategies.md)
+17. [Денормализация](lessons/17-denormalization.md)
+18. [Blob Storage и CDN](lessons/18-blob-storage-and-cdn.md)
+19. [Кеширование: стратегии](lessons/19-caching-strategies.md)
 20. [Distributed Caching](lessons/20-distributed-caching.md)
 
 ### Блок 4: Асинхронная обработка
