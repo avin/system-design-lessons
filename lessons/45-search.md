@@ -999,5 +999,5 @@ const indexingRate = new prometheus.Counter({
 5. Реализуйте fuzzy search с Levenshtein distance.
 
 ---
-
-[← Урок 44: Chat System](44-chat.md) | [Урок 46: Nearby Friends →](46-nearby-friends.md)
+**Предыдущий урок**: [Урок 44: Chat System](44-chat.md)
+**Следующий урок**: [Урок 46: Nearby Friends (Геолокационный поиск)](46-nearby-friends.md)

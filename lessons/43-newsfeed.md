@@ -986,5 +986,5 @@ CREATE TABLE post_likes (
 5. Как реализовать "Stories" (исчезающий контент через 24 часа)?
 
 ---
-
-[← Урок 42: Autocomplete System](42-autocomplete.md) | [Урок 44: Chat System →](44-chat.md)
+**Предыдущий урок**: [Урок 42: Autocomplete System (Typeahead)](42-autocomplete.md)
+**Следующий урок**: [Урок 44: Chat System](44-chat.md)

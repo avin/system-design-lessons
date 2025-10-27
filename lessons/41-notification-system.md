@@ -1111,5 +1111,5 @@ async processPush(message) {
 5. Реализуйте batching для email (1000 emails за раз через SendGrid).
 
 ---
-
-[← Урок 40: Web Crawler](40-web-crawler.md) | [Урок 42: Autocomplete System →](42-autocomplete.md)
+**Предыдущий урок**: [Урок 40: Дизайн Web Crawler](40-web-crawler.md)
+**Следующий урок**: [Урок 42: Autocomplete System (Typeahead)](42-autocomplete.md)

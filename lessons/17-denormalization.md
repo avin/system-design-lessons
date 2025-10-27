@@ -785,6 +785,5 @@ OLAP (analytics) → Denormalized data warehouse (Redshift, BigQuery)
 - Hybrid approaches (Twitter: fan-out для обычных, compute для celebrities)
 
 ---
-
-**Предыдущий урок**: [Шардирование и стратегии партиционирования](16-shardirovanie-strategii.md)
-**Следующий урок**: [Blob Storage и CDN](18-blob-storage-i-cdn.md)
+**Предыдущий урок**: [Шардирование и стратегии партиционирования](16-sharding-strategies.md)
+**Следующий урок**: [Blob Storage и CDN](18-blob-storage-and-cdn.md)

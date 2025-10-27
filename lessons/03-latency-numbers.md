@@ -477,6 +477,5 @@ results = db.query("""
 - Всегда измеряйте latency в production — цифры в документации могут отличаться
 
 ---
-
-**Предыдущий урок**: [Back-of-the-envelope calculations](02-back-of-the-envelope-calculations.md)
-**Следующий урок**: [Функциональные и нефункциональные требования](04-funkcionalnye-i-nefunkcionalnye-trebovaniya.md)
+**Предыдущий урок**: [Back-of-the-envelope Calculations](02-back-of-the-envelope-calculations.md)
+**Следующий урок**: [Функциональные и нефункциональные требования](04-functional-vs-nonfunctional-requirements.md)

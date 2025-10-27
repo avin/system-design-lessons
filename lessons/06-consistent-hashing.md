@@ -585,6 +585,5 @@ V > 40
 - Не идеально равномерное распределение (даже с vnodes)
 
 ---
-
-**Предыдущий урок**: [CAP теорема, ACID vs BASE](05-cap-teorema-acid-vs-base.md)
-**Следующий урок**: [DNS и основы работы интернета](07-dns-i-osnovy-raboty-interneta.md)
+**Предыдущий урок**: [CAP теорема, ACID vs BASE](05-cap-theorem-acid-vs-base.md)
+**Следующий урок**: [DNS и основы работы интернета](07-dns-and-internet-basics.md)

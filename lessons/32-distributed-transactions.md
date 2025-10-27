@@ -1,6 +1,5 @@
 # Урок 32: Distributed Transactions — 2PC, Saga
 
-[← Предыдущий урок: Consensus алгоритмы](31-consensus-algorithms.md) | [Следующий урок: Репликация данных →](33-data-replication.md)
 
 ## Введение
 
@@ -1041,5 +1040,5 @@ Distributed Transactions — сложная проблема с trade-offs:
 10. Как мониторить distributed transactions?
 
 ---
-
-[← Предыдущий урок: Consensus алгоритмы](31-consensus-algorithms.md) | [Следующий урок: Репликация данных →](33-data-replication.md)
+**Предыдущий урок**: [Урок 31: Consensus алгоритмы — Paxos, Raft](31-consensus-algorithms.md)
+**Следующий урок**: [Урок 33: Репликация данных](33-data-replication.md)

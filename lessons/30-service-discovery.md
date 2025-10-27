@@ -1,6 +1,5 @@
 # Урок 30: Service Discovery
 
-[← Предыдущий урок: Backend for Frontend (BFF)](29-backend-for-frontend.md) | [Следующий урок: Consensus алгоритмы →](31-consensus-algorithms.md)
 
 ## Введение
 
@@ -912,5 +911,5 @@ Service Discovery упрощает управление динамической
 10. Как Service Mesh упрощает service discovery?
 
 ---
-
-[← Предыдущий урок: Backend for Frontend (BFF)](29-backend-for-frontend.md) | [Следующий урок: Consensus алгоритмы →](31-consensus-algorithms.md)
+**Предыдущий урок**: [Урок 29: Backend for Frontend (BFF)](29-backend-for-frontend.md)
+**Следующий урок**: [Урок 31: Consensus алгоритмы — Paxos, Raft](31-consensus-algorithms.md)

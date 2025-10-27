@@ -251,5 +251,4 @@
 - Масштабируемость, надежность и производительность — фундаментальные характеристики
 
 ---
-
-**Следующий урок**: [Back-of-the-envelope calculations](02-back-of-the-envelope-calculations.md)
+**Следующий урок**: [Back-of-the-envelope Calculations](02-back-of-the-envelope-calculations.md)

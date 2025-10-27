@@ -1172,5 +1172,5 @@ const startupLatency = new prometheus.Histogram({
 5. Как обрабатывать copyright detection (Content ID)?
 
 ---
-
-[← Урок 48: Ticketing System](48-ticketing-system.md) | [Урок 50: Ride-sharing System →](50-ride-sharing.md)
+**Предыдущий урок**: [Урок 48: Ticketing System (Система продажи билетов)](48-ticketing-system.md)
+**Следующий урок**: [Урок 50: Ride-sharing System (Uber/Lyft)](50-ride-sharing.md)

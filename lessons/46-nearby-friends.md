@@ -955,5 +955,5 @@ setInterval(async () => {
 5. Реализуйте privacy zones (user не виден в определённых локациях, например дома).
 
 ---
-
-[← Урок 45: Search System](45-search.md) | [Урок 47: Social Network →](47-social-network.md)
+**Предыдущий урок**: [Урок 45: Search System](45-search.md)
+**Следующий урок**: [Урок 47: Social Network (Полный дизайн)](47-social-network.md)

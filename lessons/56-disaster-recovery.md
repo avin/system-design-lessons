@@ -975,5 +975,5 @@ Failover — это только половина. Failback обратно в pr
 8. Почему важно тестировать не только failover, но и failback?
 
 ---
-
-[← Урок 55: Kubernetes в Production](./55-kubernetes.md) | [Урок 57: Security Best Practices →](./57-security.md)
+**Предыдущий урок**: [Урок 55: Kubernetes в Production](55-kubernetes.md)
+**Следующий урок**: [Урок 57: Security Best Practices](57-security.md)

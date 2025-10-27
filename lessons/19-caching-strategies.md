@@ -949,6 +949,5 @@ await cache.set('user:v2:123', data);
 - Multi-layer caching: client → CDN → app → distributed cache
 
 ---
-
-**Предыдущий урок**: [Blob Storage и CDN](18-blob-storage-i-cdn.md)
+**Предыдущий урок**: [Blob Storage и CDN](18-blob-storage-and-cdn.md)
 **Следующий урок**: [Distributed Caching: Redis и Memcached](20-distributed-caching.md)

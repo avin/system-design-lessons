@@ -912,5 +912,5 @@ kubectl apply -f deployment.yaml
 8. Зачем нужен graceful shutdown?
 
 ---
-
-[← Урок 53: Monitoring и Observability](./53-monitoring.md) | [Урок 55: Kubernetes в Production →](./55-kubernetes.md)
+**Предыдущий урок**: [Урок 53: Monitoring и Observability](53-monitoring.md)
+**Следующий урок**: [Урок 55: Kubernetes в Production](55-kubernetes.md)

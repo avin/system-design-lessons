@@ -896,6 +896,5 @@ server {
 - Connection pooling и caching критичны для performance
 
 ---
-
-**Предыдущий урок**: [Load Balancing: алгоритмы, L4 vs L7, sticky sessions](10-load-balancing-algoritmy-l4-vs-l7.md)
-**Следующий урок**: [Rate Limiting и алгоритмы подсчёта](12-rate-limiting-algoritmy.md)
+**Предыдущий урок**: [Load Balancing: алгоритмы, L4 vs L7, sticky sessions](10-load-balancing-algorithms-l4-vs-l7.md)
+**Следующий урок**: [Rate Limiting и алгоритмы подсчёта](12-rate-limiting-algorithms.md)

@@ -1,6 +1,5 @@
 # Урок 26: Service Mesh — Istio, Linkerd
 
-[← Предыдущий урок: Микросервисы: когда и зачем](25-microservices-when-why.md) | [Следующий урок: Event-Driven Architecture →](27-event-driven-architecture.md)
 
 ## Введение
 
@@ -975,5 +974,5 @@ Service Mesh — не обязательный компонент, но при �
 10. Как Service Mesh помогает с distributed tracing?
 
 ---
-
-[← Предыдущий урок: Микросервисы: когда и зачем](25-microservices-when-why.md) | [Следующий урок: Event-Driven Architecture →](27-event-driven-architecture.md)
+**Предыдущий урок**: [Урок 25: Микросервисы — когда и зачем](25-microservices-when-why.md)
+**Следующий урок**: [Урок 27: Event-Driven Architecture](27-event-driven-architecture.md)

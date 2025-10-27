@@ -880,6 +880,5 @@ aws s3api get-object --bucket my-bucket --key file.jpg --version-id {version}
 - Cross-region replication для disaster recovery
 
 ---
-
-**Предыдущий урок**: [Денормализация и когда её применять](17-denormalizaciya.md)
-**Следующий урок**: [Кэширование: стратегии и политики вытеснения](19-keshirovanie-strategii.md)
+**Предыдущий урок**: [Денормализация и когда её применять](17-denormalization.md)
+**Следующий урок**: [Кэширование: стратегии и политики вытеснения](19-caching-strategies.md)

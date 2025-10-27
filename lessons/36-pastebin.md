@@ -1,6 +1,5 @@
 # Урок 36: Pastebin
 
-[← Предыдущий урок: URL Shortener](35-design-url-shortener.md) | [Следующий урок: Rate Limiter как система →](37-rate-limiter-kak-sistema.md)
 
 ## Введение
 
@@ -964,5 +963,5 @@ Pastebin — система для хранения и обмена тексто
 10. Какие trade-offs между consistency и performance?
 
 ---
-
-[← Предыдущий урок: URL Shortener](35-design-url-shortener.md) | [Следующий урок: Rate Limiter как система →](37-rate-limiter-kak-sistema.md)
+**Предыдущий урок**: [Урок 35: Дизайн URL Shortener (bit.ly)](35-design-url-shortener.md)
+**Следующий урок**: [Урок 37: Rate Limiter как система](37-rate-limiter.md)

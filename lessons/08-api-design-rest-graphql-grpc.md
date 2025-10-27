@@ -834,6 +834,5 @@ Web App → REST BFF → gRPC microservices
 - Документируйте API (OpenAPI для REST, introspection для GraphQL, protobuf для gRPC)
 
 ---
-
-**Предыдущий урок**: [DNS и основы работы интернета](07-dns-i-osnovy-raboty-interneta.md)
+**Предыдущий урок**: [DNS и основы работы интернета](07-dns-and-internet-basics.md)
 **Следующий урок**: [WebSockets, Server-Sent Events, Long Polling](09-websockets-sse-long-polling.md)

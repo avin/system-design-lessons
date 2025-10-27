@@ -1,6 +1,5 @@
 # Урок 29: Backend for Frontend (BFF)
 
-[← Предыдущий урок: API Gateway паттерны](28-api-gateway-patterns.md) | [Следующий урок: Service Discovery →](30-service-discovery.md)
 
 ## Введение
 
@@ -871,5 +870,5 @@ BFF особенно эффективен в комбинации с API Gateway
 10. Какие метрики важны для мониторинга BFF?
 
 ---
-
-[← Предыдущий урок: API Gateway паттерны](28-api-gateway-patterns.md) | [Следующий урок: Service Discovery →](30-service-discovery.md)
+**Предыдущий урок**: [Урок 28: API Gateway паттерны](28-api-gateway-patterns.md)
+**Следующий урок**: [Урок 30: Service Discovery](30-service-discovery.md)

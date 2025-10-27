@@ -682,6 +682,5 @@ CREATE SUBSCRIPTION my_subscription
 - Используйте routing (ProxySQL, app-level) для распределения reads
 
 ---
-
 **Предыдущий урок**: [Индексы в базах данных](14-database-indexes.md)
-**Следующий урок**: [Шардирование и стратегии партиционирования](16-shardirovanie-strategii.md)
+**Следующий урок**: [Шардирование и стратегии партиционирования](16-sharding-strategies.md)

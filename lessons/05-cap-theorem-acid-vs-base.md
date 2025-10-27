@@ -551,6 +551,5 @@ Recommendation Engine → Cassandra (BASE, AP)
 - Измеряйте latency inconsistency — она должна быть приемлемой для бизнеса
 
 ---
-
-**Предыдущий урок**: [Функциональные и нефункциональные требования](04-funkcionalnye-i-nefunkcionalnye-trebovaniya.md)
+**Предыдущий урок**: [Функциональные и нефункциональные требования](04-functional-vs-nonfunctional-requirements.md)
 **Следующий урок**: [Consistent Hashing](06-consistent-hashing.md)

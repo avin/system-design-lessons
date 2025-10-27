@@ -948,6 +948,5 @@ rename-command FLUSHALL ""
 - Use cases: cache, session store, rate limiting, leaderboards, queues, locks
 
 ---
-
-**Предыдущий урок**: [Кэширование: стратегии и политики вытеснения](19-keshirovanie-strategii.md)
-**Следующий урок**: [Message Queues: RabbitMQ, SQS](21-message-queues.md)
+**Предыдущий урок**: [Кэширование: стратегии и политики вытеснения](19-caching-strategies.md)
+**Следующий урок**: [Урок 21: Message Queues — RabbitMQ, SQS](21-message-queues.md)

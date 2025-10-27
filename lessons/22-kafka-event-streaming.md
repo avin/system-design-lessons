@@ -1,6 +1,5 @@
 # Урок 22: Kafka и Event Streaming
 
-[← Предыдущий урок: Message Queues](21-message-queues.md) | [Следующий урок: Async Workers →](23-async-workers.md)
 
 ## Введение
 
@@ -1318,5 +1317,5 @@ Kafka — сложнее, чем традиционные очереди, но �
 10. Когда использовать Kafka вместо традиционных message queues?
 
 ---
-
-[← Предыдущий урок: Message Queues](21-message-queues.md) | [Следующий урок: Async Workers →](23-async-workers.md)
+**Предыдущий урок**: [Урок 21: Message Queues — RabbitMQ, SQS](21-message-queues.md)
+**Следующий урок**: [Урок 23: Async Workers — Celery, BullMQ](23-async-workers.md)

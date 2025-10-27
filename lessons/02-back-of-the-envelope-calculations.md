@@ -455,6 +455,5 @@ With replication: 182PB × 3 = 546PB
 - Практика делает совершенным — решайте задачи регулярно
 
 ---
-
-**Предыдущий урок**: [Введение в System Design](01-vvedenie-v-system-design.md)
-**Следующий урок**: [Latency numbers](03-latency-numbers.md)
+**Предыдущий урок**: [Введение в System Design](01-introduction-to-system-design.md)
+**Следующий урок**: [Latency Numbers Every Programmer Should Know](03-latency-numbers.md)

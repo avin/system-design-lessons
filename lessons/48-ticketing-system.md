@@ -1131,5 +1131,5 @@ CREATE TABLE bookings (
 5. Реализуйте dynamic pricing (цена растёт при низком остатке мест).
 
 ---
-
-[← Урок 47: Social Network](47-social-network.md) | [Урок 49: Video Streaming →](49-video-streaming.md)
+**Предыдущий урок**: [Урок 47: Social Network (Полный дизайн)](47-social-network.md)
+**Следующий урок**: [Урок 49: Video Streaming Platform](49-video-streaming.md)

@@ -745,6 +745,5 @@ CREATE INDEX CONCURRENTLY idx_users_email ON users(email);
 - CREATE INDEX CONCURRENTLY для production (PostgreSQL)
 
 ---
-
 **Предыдущий урок**: [SQL vs NoSQL](13-sql-vs-nosql.md)
-**Следующий урок**: [Репликация: Master-Slave и Master-Master](15-replikaciya-master-slave-master-master.md)
+**Следующий урок**: [Репликация: Master-Slave и Master-Master](15-master-slave-and-multi-master-replication.md)

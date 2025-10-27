@@ -994,5 +994,5 @@ setInterval(async () => {
 5. Какие проблемы возникают при crawling динамических сайтов (JavaScript-rendered)?
 
 ---
-
-[← Урок 39: Генератор уникальных идентификаторов](39-unique-id-generator.md) | [Урок 41: Notification System →](41-notification-system.md)
+**Предыдущий урок**: [Урок 39: Генератор уникальных идентификаторов](39-unique-id-generator.md)
+**Следующий урок**: [Урок 41: Notification System](41-notification-system.md)

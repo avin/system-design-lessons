@@ -810,6 +810,5 @@ LB расшифровывает SSL, backend получает plain HTTP:
 - Мониторьте latency, error rate, и backend health
 
 ---
-
 **Предыдущий урок**: [WebSockets, Server-Sent Events, Long Polling](09-websockets-sse-long-polling.md)
-**Следующий урок**: [API Gateway и Reverse Proxy](11-api-gateway-i-reverse-proxy.md)
+**Следующий урок**: [API Gateway и Reverse Proxy](11-api-gateway-and-reverse-proxy.md)

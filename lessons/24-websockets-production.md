@@ -1,6 +1,5 @@
 # Урок 24: WebSockets в production
 
-[← Предыдущий урок: Async Workers](23-async-workers.md) | [Следующий урок: Микросервисы: когда и зачем →](25-microservices-when-why.md)
 
 ## Введение
 
@@ -1132,5 +1131,5 @@ Socket.IO предоставляет готовые решения для бол
 10. Как обрабатывать reconnection на клиенте?
 
 ---
-
-[← Предыдущий урок: Async Workers](23-async-workers.md) | [Следующий урок: Микросервисы: когда и зачем →](25-microservices-when-why.md)
+**Предыдущий урок**: [Урок 23: Async Workers — Celery, BullMQ](23-async-workers.md)
+**Следующий урок**: [Урок 25: Микросервисы — когда и зачем](25-microservices-when-why.md)

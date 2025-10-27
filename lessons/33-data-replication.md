@@ -1,6 +1,5 @@
 # Урок 33: Репликация данных
 
-[← Предыдущий урок: Distributed Transactions](32-distributed-transactions.md) | [Следующий урок: Eventual Consistency →](34-eventual-consistency.md)
 
 ## Введение
 
@@ -905,5 +904,5 @@ const data = await follower.read(key);
 10. Какие trade-offs между consistency и availability в репликации?
 
 ---
-
-[← Предыдущий урок: Distributed Transactions](32-distributed-transactions.md) | [Следующий урок: Eventual Consistency →](34-eventual-consistency.md)
+**Предыдущий урок**: [Урок 32: Distributed Transactions — 2PC, Saga](32-distributed-transactions.md)
+**Следующий урок**: [Урок 34: Eventual Consistency](34-eventual-consistency.md)

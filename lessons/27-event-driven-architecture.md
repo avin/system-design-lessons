@@ -1,6 +1,5 @@
 # Урок 27: Event-Driven Architecture
 
-[← Предыдущий урок: Service Mesh](26-service-mesh.md) | [Следующий урок: API Gateway паттерны →](28-api-gateway-patterns.md)
 
 ## Введение
 
@@ -1027,5 +1026,5 @@ Event-Driven Architecture особенно полезна в микросерв�
 10. Когда НЕ стоит использовать Event-Driven Architecture?
 
 ---
-
-[← Предыдущий урок: Service Mesh](26-service-mesh.md) | [Следующий урок: API Gateway паттерны →](28-api-gateway-patterns.md)
+**Предыдущий урок**: [Урок 26: Service Mesh — Istio, Linkerd](26-service-mesh.md)
+**Следующий урок**: [Урок 28: API Gateway паттерны](28-api-gateway-patterns.md)

@@ -1305,28 +1305,5 @@ Penetration testing, code reviews.
 
 ---
 
-[← Урок 56: Disaster Recovery](./56-disaster-recovery.md) | [README →](../README.md)
-
 ---
-
-## Поздравляем! 🎉
-
-Вы прошли все 57 уроков курса по System Design!
-
-Теперь вы знаете:
-- ✓ Фундаментальные концепции (latency, throughput, CAP theorem)
-- ✓ Networking и коммуникации (HTTP, WebSocket, gRPC, GraphQL)
-- ✓ Базы данных (SQL, NoSQL, NewSQL, sharding, replication)
-- ✓ Кэширование и очереди (Redis, Kafka, RabbitMQ)
-- ✓ Микросервисы и паттерны (API Gateway, Circuit Breaker, CQRS, Saga)
-- ✓ Distributed systems (Consensus, Leader Election, Vector Clocks)
-- ✓ Реальные системы (URL Shortener, Chat, E-commerce, Netflix, Uber, Facebook)
-- ✓ Production (Monitoring, Deployment, Kubernetes, DR, Security)
-
-**Следующие шаги:**
-1. Практикуйтесь: реализуйте проекты из курса
-2. Читайте документацию реальных систем (AWS, Netflix, Uber tech blogs)
-3. Проходите mock interviews на system design
-4. Вносите вклад в open source проекты
-
-Удачи в ваших интервью и проектах! 🚀
+**Предыдущий урок**: [Урок 56: Disaster Recovery](56-disaster-recovery.md)

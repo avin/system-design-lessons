@@ -1047,5 +1047,5 @@ const friendships = new prometheus.Counter({
 5. Как обрабатывать viral posts (миллионы лайков/комментов)?
 
 ---
-
-[← Урок 46: Nearby Friends](46-nearby-friends.md) | [Урок 48: Ticketing System →](48-ticketing-system.md)
+**Предыдущий урок**: [Урок 46: Nearby Friends (Геолокационный поиск)](46-nearby-friends.md)
+**Следующий урок**: [Урок 48: Ticketing System (Система продажи билетов)](48-ticketing-system.md)

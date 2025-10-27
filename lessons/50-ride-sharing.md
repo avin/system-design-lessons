@@ -1212,5 +1212,5 @@ CREATE TABLE ratings (
 5. Как оптимизировать matching для минимизации total wait time всех riders?
 
 ---
-
-[← Урок 49: Video Streaming](49-video-streaming.md) | [Урок 51: E-commerce Platform →](51-ecommerce.md)
+**Предыдущий урок**: [Урок 49: Video Streaming Platform](49-video-streaming.md)
+**Следующий урок**: [Урок 51: E-commerce Platform](51-ecommerce.md)

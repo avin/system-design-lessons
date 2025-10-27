@@ -792,6 +792,5 @@ for (const shard of shards) {
 - Plan for growth — start с достаточным количеством shards
 
 ---
-
-**Предыдущий урок**: [Репликация: Master-Slave и Master-Master](15-replikaciya-master-slave-master-master.md)
-**Следующий урок**: [Денормализация и когда её применять](17-denormalizaciya.md)
+**Предыдущий урок**: [Репликация: Master-Slave и Master-Master](15-master-slave-and-multi-master-replication.md)
+**Следующий урок**: [Денормализация и когда её применять](17-denormalization.md)

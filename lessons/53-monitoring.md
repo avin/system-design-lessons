@@ -1179,5 +1179,5 @@ class SLOTracker {
 8. Зачем нужен distributed tracing?
 
 ---
-
-[← Урок 52: Recommendation System](./52-recommendation-system.md) | [Урок 54: Deployment Strategies →](./54-deployment.md)
+**Предыдущий урок**: [Урок 52: Recommendation System — Система рекомендаций](52-recommendation-system.md)
+**Следующий урок**: [Урок 54: Deployment Strategies](54-deployment.md)

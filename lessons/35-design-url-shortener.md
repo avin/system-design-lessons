@@ -1,6 +1,5 @@
 # Урок 35: Дизайн URL Shortener (bit.ly)
 
-[← Предыдущий урок: Eventual Consistency](34-eventual-consistency.md) | [Следующий урок: Pastebin →](36-pastebin.md)
 
 ## Введение
 
@@ -830,5 +829,5 @@ URL Shortener — отличный пример для изучения:
 10. Как защититься от abuse (создание spam ссылок)?
 
 ---
-
-[← Предыдущий урок: Eventual Consistency](34-eventual-consistency.md) | [Следующий урок: Pastebin →](36-pastebin.md)
+**Предыдущий урок**: [Урок 34: Eventual Consistency](34-eventual-consistency.md)
+**Следующий урок**: [Урок 36: Pastebin](36-pastebin.md)

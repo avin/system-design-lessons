@@ -976,5 +976,5 @@ class ChatServerRegistry {
 5. Как реализовать message reactions (emoji)?
 
 ---
-
-[← Урок 43: Newsfeed System](43-newsfeed.md) | [Урок 45: Search System →](45-search.md)
+**Предыдущий урок**: [Урок 43: Newsfeed System](43-newsfeed.md)
+**Следующий урок**: [Урок 45: Search System](45-search.md)

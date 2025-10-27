@@ -1,6 +1,5 @@
 # Урок 34: Eventual Consistency
 
-[← Предыдущий урок: Репликация данных](33-data-replication.md) | [Следующий урок: Дизайн URL Shortener →](35-design-url-shortener.md)
 
 ## Введение
 
@@ -1067,5 +1066,5 @@ Eventual Consistency позволяет строить highly available сист
 10. Какие trade-offs у Eventual Consistency?
 
 ---
-
-[← Предыдущий урок: Репликация данных](33-data-replication.md) | [Следующий урок: Дизайн URL Shortener →](35-design-url-shortener.md)
+**Предыдущий урок**: [Урок 33: Репликация данных](33-data-replication.md)
+**Следующий урок**: [Урок 35: Дизайн URL Shortener (bit.ly)](35-design-url-shortener.md)

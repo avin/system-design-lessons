@@ -1,6 +1,5 @@
 # Урок 25: Микросервисы — когда и зачем
 
-[← Предыдущий урок: WebSockets в production](24-websockets-production.md) | [Следующий урок: Service Mesh →](26-service-mesh.md)
 
 ## Введение
 
@@ -974,5 +973,5 @@ spec:
 10. Какие проблемы решает CQRS?
 
 ---
-
-[← Предыдущий урок: WebSockets в production](24-websockets-production.md) | [Следующий урок: Service Mesh →](26-service-mesh.md)
+**Предыдущий урок**: [Урок 24: WebSockets в production](24-websockets-production.md)
+**Следующий урок**: [Урок 26: Service Mesh — Istio, Linkerd](26-service-mesh.md)

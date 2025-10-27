@@ -837,5 +837,5 @@ app.get('/autocomplete', async (req, res) => {
 5. Как реализовать multi-language autocomplete?
 
 ---
-
-[← Урок 41: Notification System](41-notification-system.md) | [Урок 43: Newsfeed System →](43-newsfeed.md)
+**Предыдущий урок**: [Урок 41: Notification System](41-notification-system.md)
+**Следующий урок**: [Урок 43: Newsfeed System](43-newsfeed.md)

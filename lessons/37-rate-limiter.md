@@ -1140,5 +1140,5 @@ class GracefulRateLimiter {
 5. Как посчитать, сколько памяти потребуется Redis для 1M пользователей с лимитом 1000 req/hour (Sliding Window Counter)?
 
 ---
-
-[← Урок 36: Pastebin](36-pastebin.md) | [Урок 38: Распределённое хранилище ключ-значение →](38-distributed-kv-store.md)
+**Предыдущий урок**: [Урок 36: Pastebin](36-pastebin.md)
+**Следующий урок**: [Урок 38: Распределённое хранилище ключ-значение](38-distributed-kv-store.md)

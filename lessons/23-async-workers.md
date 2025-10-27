@@ -1,6 +1,5 @@
 # Урок 23: Async Workers — Celery, BullMQ
 
-[← Предыдущий урок: Kafka и Event Streaming](22-kafka-event-streaming.md) | [Следующий урок: WebSockets в production →](24-websockets-production.md)
 
 ## Введение
 
@@ -1119,5 +1118,5 @@ Async Workers — критический компонент современны
 10. Когда использовать async workers вместо синхронной обработки?
 
 ---
-
-[← Предыдущий урок: Kafka и Event Streaming](22-kafka-event-streaming.md) | [Следующий урок: WebSockets в production →](24-websockets-production.md)
+**Предыдущий урок**: [Урок 22: Kafka и Event Streaming](22-kafka-event-streaming.md)
+**Следующий урок**: [Урок 24: WebSockets в production](24-websockets-production.md)

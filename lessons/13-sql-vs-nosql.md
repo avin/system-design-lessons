@@ -766,6 +766,5 @@ NoSQL для:
 - Нет универсального решения — выбор зависит от requirements
 
 ---
-
-**Предыдущий урок**: [Rate Limiting и алгоритмы подсчёта](12-rate-limiting-algoritmy.md)
+**Предыдущий урок**: [Rate Limiting и алгоритмы подсчёта](12-rate-limiting-algorithms.md)
 **Следующий урок**: [Индексы в базах данных](14-database-indexes.md)

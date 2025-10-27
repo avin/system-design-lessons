@@ -477,6 +477,5 @@ Non-Functional Requirements:
 - Требования определяют архитектуру: latency → caching, availability → replication, scale → sharding
 
 ---
-
-**Предыдущий урок**: [Latency numbers](03-latency-numbers.md)
-**Следующий урок**: [CAP теорема, ACID vs BASE](05-cap-teorema-acid-vs-base.md)
+**Предыдущий урок**: [Latency Numbers Every Programmer Should Know](03-latency-numbers.md)
+**Следующий урок**: [CAP теорема, ACID vs BASE](05-cap-theorem-acid-vs-base.md)

@@ -1057,6 +1057,5 @@ async function allowRequest(userId) {
 - Graceful degradation при недоступности rate limiter
 
 ---
-
-**Предыдущий урок**: [API Gateway и Reverse Proxy](11-api-gateway-i-reverse-proxy.md)
+**Предыдущий урок**: [API Gateway и Reverse Proxy](11-api-gateway-and-reverse-proxy.md)
 **Следующий урок**: [SQL vs NoSQL](13-sql-vs-nosql.md)

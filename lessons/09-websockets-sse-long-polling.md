@@ -858,6 +858,5 @@ ws.on('message', (data) => {
 - Выбор зависит от use case: bidirectional? binary? browser support?
 
 ---
-
 **Предыдущий урок**: [API Design: REST, GraphQL, gRPC](08-api-design-rest-graphql-grpc.md)
-**Следующий урок**: [Load Balancing: алгоритмы, L4 vs L7, sticky sessions](10-load-balancing-algoritmy-l4-vs-l7.md)
+**Следующий урок**: [Load Balancing: алгоритмы, L4 vs L7, sticky sessions](10-load-balancing-algorithms-l4-vs-l7.md)

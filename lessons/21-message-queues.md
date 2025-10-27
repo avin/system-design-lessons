@@ -1,6 +1,5 @@
 # Урок 21: Message Queues — RabbitMQ, SQS
 
-[← Предыдущий урок: Distributed Caching](20-distributed-caching.md) | [Следующий урок: Kafka и Event Streaming →](22-kafka-event-streaming.md)
 
 ## Введение
 
@@ -1132,5 +1131,5 @@ Message Queues — это фундамент асинхронной архите
 10. Когда имеет смысл использовать RabbitMQ вместо SQS и наоборот?
 
 ---
-
-[← Предыдущий урок: Distributed Caching](20-distributed-caching.md) | [Следующий урок: Kafka и Event Streaming →](22-kafka-event-streaming.md)
+**Предыдущий урок**: [Distributed Caching: Redis и Memcached](20-distributed-caching.md)
+**Следующий урок**: [Урок 22: Kafka и Event Streaming](22-kafka-event-streaming.md)

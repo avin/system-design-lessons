@@ -1048,5 +1048,5 @@ spec:
 8. Как делать backup Kubernetes кластера с Velero?
 
 ---
-
-[← Урок 54: Deployment Strategies](./54-deployment.md) | [Урок 56: Disaster Recovery →](./56-disaster-recovery.md)
+**Предыдущий урок**: [Урок 54: Deployment Strategies](54-deployment.md)
+**Следующий урок**: [Урок 56: Disaster Recovery](56-disaster-recovery.md)

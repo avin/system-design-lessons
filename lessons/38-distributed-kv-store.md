@@ -1193,5 +1193,5 @@ async put(key, value) {
 5. Спроектируйте KV store для сценария: 99.999% availability, eventual consistency OK, geo-distributed.
 
 ---
-
-[← Урок 37: Rate Limiter](37-rate-limiter.md) | [Урок 39: Генератор уникальных идентификаторов →](39-unique-id-generator.md)
+**Предыдущий урок**: [Урок 37: Rate Limiter как система](37-rate-limiter.md)
+**Следующий урок**: [Урок 39: Генератор уникальных идентификаторов](39-unique-id-generator.md)

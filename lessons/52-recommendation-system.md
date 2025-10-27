@@ -1378,5 +1378,5 @@ async getRealTimeRecommendations(userId, sessionItems) {
 8. Какие метрики использовать для оценки качества рекомендаций (CTR, Conversion, Diversity)?
 
 ---
-
-[← Урок 51: E-commerce Platform](./51-ecommerce.md) | [Урок 53: Monitoring и Observability →](./53-monitoring.md)
+**Предыдущий урок**: [Урок 51: E-commerce Platform](51-ecommerce.md)
+**Следующий урок**: [Урок 53: Monitoring и Observability](53-monitoring.md)

@@ -1,6 +1,5 @@
 # Урок 28: API Gateway паттерны
 
-[← Предыдущий урок: Event-Driven Architecture](27-event-driven-architecture.md) | [Следующий урок: Backend for Frontend (BFF) →](29-backend-for-frontend.md)
 
 ## Введение
 
@@ -917,5 +916,5 @@ API Gateway упрощает клиентскую разработку и цен
 10. Какие проблемы может создать API Gateway?
 
 ---
-
-[← Предыдущий урок: Event-Driven Architecture](27-event-driven-architecture.md) | [Следующий урок: Backend for Frontend (BFF) →](29-backend-for-frontend.md)
+**Предыдущий урок**: [Урок 27: Event-Driven Architecture](27-event-driven-architecture.md)
+**Следующий урок**: [Урок 29: Backend for Frontend (BFF)](29-backend-for-frontend.md)

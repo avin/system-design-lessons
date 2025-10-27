@@ -894,5 +894,5 @@ describe('SnowflakeID', () => {
 5. Как обеспечить строгую уникальность ID при возможных clock skews?
 
 ---
-
-[← Урок 38: Распределённое хранилище ключ-значение](38-distributed-kv-store.md) | [Урок 40: Web Crawler →](40-web-crawler.md)
+**Предыдущий урок**: [Урок 38: Распределённое хранилище ключ-значение](38-distributed-kv-store.md)
+**Следующий урок**: [Урок 40: Дизайн Web Crawler](40-web-crawler.md)

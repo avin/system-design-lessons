@@ -1,6 +1,5 @@
 # Урок 31: Consensus алгоритмы — Paxos, Raft
 
-[← Предыдущий урок: Service Discovery](30-service-discovery.md) | [Следующий урок: Distributed Transactions →](32-distributed-transactions.md)
 
 ## Введение
 
@@ -902,5 +901,5 @@ Consensus обеспечивает consistency и fault tolerance, но жерт
 10. Какие ограничения у consensus алгоритмов?
 
 ---
-
-[← Предыдущий урок: Service Discovery](30-service-discovery.md) | [Следующий урок: Distributed Transactions →](32-distributed-transactions.md)
+**Предыдущий урок**: [Урок 30: Service Discovery](30-service-discovery.md)
+**Следующий урок**: [Урок 32: Distributed Transactions — 2PC, Saga](32-distributed-transactions.md)

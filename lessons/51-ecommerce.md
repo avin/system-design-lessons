@@ -1302,5 +1302,5 @@ CREATE TABLE order_items (
 5. Спроектируйте систему возвратов (returns & refunds).
 
 ---
-
-[← Урок 50: Ride-sharing System](50-ride-sharing.md) | [Урок 52: Recommendation System →](52-recommendation-system.md)
+**Предыдущий урок**: [Урок 50: Ride-sharing System (Uber/Lyft)](50-ride-sharing.md)
+**Следующий урок**: [Урок 52: Recommendation System — Система рекомендаций](52-recommendation-system.md)
