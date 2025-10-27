@@ -76,17 +76,19 @@ CloudFront edge locations кэшируют static assets
 
 ### 3. Application-level Cache (In-memory)
 
-```python
-# In-process cache (словарь, LRU cache)
-cache = {}
+```javascript
+// In-process cache (Map, LRU cache)
+const cache = new Map();
 
-def get_user(user_id):
-    if user_id in cache:
-        return cache[user_id]
+async function getUser(userId) {
+  if (cache.has(userId)) {
+    return cache.get(userId);
+  }
 
-    user = db.query("SELECT * FROM users WHERE id = ?", user_id)
-    cache[user_id] = user
-    return user
+  const user = await db.query('SELECT * FROM users WHERE id = ?', [userId]);
+  cache.set(userId, user);
+  return user;
+}
 ```
 
 **Преимущества**: Ultra-fast (nanoseconds)
@@ -94,21 +96,23 @@ def get_user(user_id):
 
 ### 4. Distributed Cache (Redis, Memcached)
 
-```python
-import redis
+```javascript
+const Redis = require('ioredis');
 
-cache = redis.Redis(host='localhost', port=6379)
+const cache = new Redis({ host: 'localhost', port: 6379 });
 
-def get_user(user_id):
-    # Try cache
-    cached = cache.get(f"user:{user_id}")
-    if cached:
-        return json.loads(cached)
+async function getUser(userId) {
+  // Try cache
+  const cached = await cache.get(`user:${userId}`);
+  if (cached) {
+    return JSON.parse(cached);
+  }
 
-    # Cache miss
-    user = db.query("SELECT * FROM users WHERE id = ?", user_id)
-    cache.setex(f"user:{user_id}", 3600, json.dumps(user))
-    return user
+  // Cache miss
+  const user = await db.query('SELECT * FROM users WHERE id = ?', [userId]);
+  await cache.setex(`user:${userId}`, 3600, JSON.stringify(user));
+  return user;
+}
 ```
 
 **Преимущества**: Shared, scalable, persistent (Redis)
@@ -129,20 +133,22 @@ SELECT SQL_CACHE * FROM users WHERE id = 123;
 
 **Наиболее распространенный pattern**.
 
-```python
-def get_data(key):
-    # 1. Check cache
-    data = cache.get(key)
-    if data:
-        return data  # Cache hit
+```javascript
+async function getData(key) {
+  // 1. Check cache
+  const cached = await cache.get(key);
+  if (cached) {
+    return JSON.parse(cached); // Cache hit
+  }
 
-    # 2. Cache miss → query database
-    data = database.query(key)
+  // 2. Cache miss → query database
+  const data = await database.query(key);
 
-    # 3. Store в cache
-    cache.set(key, data, ttl=3600)
+  // 3. Store в cache
+  await cache.set(key, JSON.stringify(data), 'EX', 3600);
 
-    return data
+  return data;
+}
 ```
 
 **Diagram**:
@@ -169,9 +175,9 @@ App → Cache (check)
 
 Похоже на Cache-Aside, но cache сам запрашивает БД.
 
-```python
-# Cache library handles DB query
-data = cache.get(key, loader=lambda: database.query(key))
+```javascript
+// Cache library handles DB query
+const data = await cache.getOrSet(key, async () => database.query(key));
 ```
 
 **Diagram**:
@@ -196,15 +202,16 @@ App → Cache (get)
 
 Пишем одновременно в cache и database.
 
-```python
-def update_data(key, value):
-    # 1. Write to cache
-    cache.set(key, value)
+```javascript
+async function updateData(key, value) {
+  // 1. Write to cache
+  await cache.set(key, JSON.stringify(value));
 
-    # 2. Write to database
-    database.update(key, value)
+  // 2. Write to database
+  await database.update(key, value);
 
-    return value
+  return value;
+}
 ```
 
 **Diagram**:

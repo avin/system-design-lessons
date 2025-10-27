@@ -87,38 +87,40 @@ t=1s: Refilled +10 → 10 tokens
 
 #### Реализация
 
-```python
-import time
+```javascript
+class TokenBucket {
+  constructor({ capacity, refillRate }) {
+    this.capacity = capacity;
+    this.tokens = capacity;
+    this.refillRate = refillRate; // tokens per second
+    this.lastRefill = Date.now() / 1000;
+  }
 
-class TokenBucket:
-    def __init__(self, capacity, refill_rate):
-        self.capacity = capacity
-        self.tokens = capacity
-        self.refill_rate = refill_rate  # tokens per second
-        self.last_refill = time.time()
+  allowRequest() {
+    const now = Date.now() / 1000;
+    const elapsed = now - this.lastRefill;
+    const tokensToAdd = elapsed * this.refillRate;
 
-    def allow_request(self):
-        # Пополнить токены
-        now = time.time()
-        elapsed = now - self.last_refill
-        tokens_to_add = elapsed * self.refill_rate
-        self.tokens = min(self.capacity, self.tokens + tokens_to_add)
-        self.last_refill = now
+    this.tokens = Math.min(this.capacity, this.tokens + tokensToAdd);
+    this.lastRefill = now;
 
-        # Проверить доступность токена
-        if self.tokens >= 1:
-            self.tokens -= 1
-            return True
-        else:
-            return False
+    if (this.tokens >= 1) {
+      this.tokens -= 1;
+      return true;
+    }
 
-# Usage
-bucket = TokenBucket(capacity=100, refill_rate=10)
+    return false;
+  }
+}
 
-if bucket.allow_request():
-    print("Request allowed")
-else:
-    print("Rate limit exceeded")
+// Usage
+const bucket = new TokenBucket({ capacity: 100, refillRate: 10 });
+
+if (bucket.allowRequest()) {
+  console.log('Request allowed');
+} else {
+  console.log('Rate limit exceeded');
+}
 ```
 
 #### Преимущества
@@ -161,39 +163,40 @@ Process 2 req/sec
 [R5] processed at t=3s
 ```
 
+
 #### Реализация
 
-```python
-from collections import deque
-import time
+```javascript
+class LeakyBucket {
+  constructor({ capacity, leakRate }) {
+    this.capacity = capacity;
+    this.queue = [];
+    this.leakRate = leakRate; // requests per second
+    this.lastLeak = Date.now() / 1000;
+  }
 
-class LeakyBucket:
-    def __init__(self, capacity, leak_rate):
-        self.capacity = capacity
-        self.queue = deque()
-        self.leak_rate = leak_rate  # requests per second
-        self.last_leak = time.time()
+  allowRequest() {
+    const now = Date.now() / 1000;
+    const elapsed = now - this.lastLeak;
+    const leaks = Math.floor(elapsed * this.leakRate);
 
-    def allow_request(self):
-        # Leak (process) requests
-        now = time.time()
-        elapsed = now - self.last_leak
-        leaks = int(elapsed * self.leak_rate)
+    for (let i = 0; i < leaks && this.queue.length > 0; i += 1) {
+      this.queue.shift();
+    }
 
-        for _ in range(min(leaks, len(self.queue))):
-            self.queue.popleft()
+    this.lastLeak = now;
 
-        self.last_leak = now
+    if (this.queue.length < this.capacity) {
+      this.queue.push(now);
+      return true;
+    }
 
-        # Try to add new request
-        if len(self.queue) < self.capacity:
-            self.queue.append(now)
-            return True
-        else:
-            return False
+    return false;
+  }
+}
 
-# Usage
-bucket = LeakyBucket(capacity=10, leak_rate=2)
+// Usage
+const bucket = new LeakyBucket({ capacity: 10, leakRate: 2 });
 ```
 
 #### Преимущества
@@ -236,35 +239,37 @@ Limit: 100 req/min
 
 #### Реализация
 
-```python
-import time
-from collections import defaultdict
+```javascript
+class FixedWindowCounter {
+  constructor({ limit, windowSize }) {
+    this.limit = limit;
+    this.windowSize = windowSize; // seconds
+    this.windows = new Map();
+  }
 
-class FixedWindowCounter:
-    def __init__(self, limit, window_size):
-        self.limit = limit
-        self.window_size = window_size  # seconds
-        self.windows = defaultdict(int)
+  allowRequest(userId) {
+    const now = Math.floor(Date.now() / 1000);
+    const window = Math.floor(now / this.windowSize);
+    const key = `${userId}:${window}`;
+    const currentCount = this.windows.get(key) ?? 0;
 
-    def allow_request(self, user_id):
-        now = time.time()
-        window = int(now / self.window_size)
+    if (currentCount < this.limit) {
+      this.windows.set(key, currentCount + 1);
+      return true;
+    }
 
-        key = f"{user_id}:{window}"
+    return false;
+  }
+}
 
-        if self.windows[key] < self.limit:
-            self.windows[key] += 1
-            return True
-        else:
-            return False
+// Usage
+const limiter = new FixedWindowCounter({ limit: 100, windowSize: 60 });
 
-# Usage
-limiter = FixedWindowCounter(limit=100, window_size=60)
-
-if limiter.allow_request("user_123"):
-    print("Allowed")
-else:
-    print("Rate limited")
+if (limiter.allowRequest('user_123')) {
+  console.log('Allowed');
+} else {
+  console.log('Rate limited');
+}
 ```
 
 #### Проблема: Burst на границе окон
@@ -314,38 +319,39 @@ Count: 95 requests
 New request → 96 < 100 → ✅ Allowed
 ```
 
+
 #### Реализация
 
-```python
-import time
-from collections import defaultdict
+```javascript
+class SlidingWindowLog {
+  constructor({ limit, windowSize }) {
+    this.limit = limit;
+    this.windowSize = windowSize; // seconds
+    this.logs = new Map();
+  }
 
-class SlidingWindowLog:
-    def __init__(self, limit, window_size):
-        self.limit = limit
-        self.window_size = window_size  # seconds
-        self.logs = defaultdict(list)
+  allowRequest(userId) {
+    const now = Date.now() / 1000;
+    const windowStart = now - this.windowSize;
+    const timestamps = (this.logs.get(userId) ?? []).filter(
+      (timestamp) => timestamp > windowStart,
+    );
 
-    def allow_request(self, user_id):
-        now = time.time()
-        window_start = now - self.window_size
+    if (timestamps.length < this.limit) {
+      timestamps.push(now);
+      this.logs.set(userId, timestamps);
+      return true;
+    }
 
-        # Remove old requests
-        self.logs[user_id] = [
-            timestamp for timestamp in self.logs[user_id]
-            if timestamp > window_start
-        ]
+    this.logs.set(userId, timestamps);
+    return false;
+  }
+}
 
-        # Check limit
-        if len(self.logs[user_id]) < self.limit:
-            self.logs[user_id].append(now)
-            return True
-        else:
-            return False
-
-# Usage
-limiter = SlidingWindowLog(limit=100, window_size=60)
+// Usage
+const limiter = new SlidingWindowLog({ limit: 100, windowSize: 60 });
 ```
+
 
 #### Преимущества
 
@@ -387,41 +393,38 @@ Limit: 100 → ✅ Allowed
 
 #### Реализация
 
-```python
-import time
-from collections import defaultdict
+```javascript
+class SlidingWindowCounter {
+  constructor({ limit, windowSize }) {
+    this.limit = limit;
+    this.windowSize = windowSize;
+    this.windows = new Map();
+  }
 
-class SlidingWindowCounter:
-    def __init__(self, limit, window_size):
-        self.limit = limit
-        self.window_size = window_size
-        self.windows = defaultdict(lambda: defaultdict(int))
+  allowRequest(userId) {
+    const now = Date.now() / 1000;
+    const currentWindow = Math.floor(now / this.windowSize);
+    const previousWindow = currentWindow - 1;
+    const windowPosition = (now % this.windowSize) / this.windowSize;
 
-    def allow_request(self, user_id):
-        now = time.time()
-        current_window = int(now / self.window_size)
-        previous_window = current_window - 1
+    const userWindows = this.windows.get(userId) ?? new Map();
+    const previousCount = userWindows.get(previousWindow) ?? 0;
+    const currentCount = userWindows.get(currentWindow) ?? 0;
 
-        # Position in current window (0.0 to 1.0)
-        window_position = (now % self.window_size) / self.window_size
+    const weightedCount = previousCount * (1 - windowPosition) + currentCount;
 
-        # Weighted count
-        previous_count = self.windows[user_id].get(previous_window, 0)
-        current_count = self.windows[user_id].get(current_window, 0)
+    if (weightedCount < this.limit) {
+      userWindows.set(currentWindow, currentCount + 1);
+      this.windows.set(userId, userWindows);
+      return true;
+    }
 
-        weighted_count = (
-            previous_count * (1 - window_position) +
-            current_count
-        )
+    return false;
+  }
+}
 
-        if weighted_count < self.limit:
-            self.windows[user_id][current_window] += 1
-            return True
-        else:
-            return False
-
-# Usage
-limiter = SlidingWindowCounter(limit=100, window_size=60)
+// Usage
+const limiter = new SlidingWindowCounter({ limit: 100, windowSize: 60 });
 ```
 
 #### Преимущества
@@ -456,8 +459,8 @@ limiter = SlidingWindowCounter(limit=100, window_size=60)
 ### Проблема
 
 С одним сервером легко:
-```python
-counter = {}  # In-memory
+```javascript
+const counter = new Map(); // In-memory
 ```
 
 С несколькими серверами:
@@ -473,26 +476,29 @@ Total: 125 requests (превышен limit 100!)
 
 **Простейшее решение**:
 
-```python
-import redis
-import time
+```javascript
+const Redis = require('ioredis');
 
-r = redis.Redis(host='localhost', port=6379)
+const redis = new Redis({ host: 'localhost', port: 6379 });
 
-def allow_request(user_id, limit=100, window=60):
-    key = f"rate_limit:{user_id}"
-    current = r.incr(key)
+async function allowRequest(userId, { limit = 100, window = 60 } = {}) {
+  const key = `rate_limit:${userId}`;
+  const current = await redis.incr(key);
 
-    if current == 1:
-        r.expire(key, window)
+  if (current === 1) {
+    await redis.expire(key, window);
+  }
 
-    return current <= limit
+  return current <= limit;
+}
 
-# Usage
-if allow_request("user_123"):
-    print("Allowed")
-else:
-    print("Rate limited")
+(async () => {
+  if (await allowRequest('user_123')) {
+    console.log('Allowed');
+  } else {
+    console.log('Rate limited');
+  }
+})();
 ```
 
 **Проблема**: Race condition между INCR и EXPIRE.
@@ -516,51 +522,50 @@ else
 end
 ```
 
-```python
-import redis
+```javascript
+const Redis = require('ioredis');
 
-r = redis.Redis()
+const redis = new Redis();
 
-lua_script = """
-... (script выше)
-"""
+const luaScript = `
+-- (lua-скрипт как выше)
+`;
 
-rate_limit_script = r.register_script(lua_script)
+redis.defineCommand('rateLimit', {
+  numberOfKeys: 1,
+  lua: luaScript,
+});
 
-def allow_request(user_id, limit=100, window=60):
-    result = rate_limit_script(
-        keys=[f"rate_limit:{user_id}"],
-        args=[limit, window]
-    )
-    return result == 1
+async function allowRequest(userId, { limit = 100, window = 60 } = {}) {
+  const result = await redis.rateLimit(`rate_limit:${userId}`, limit, window);
+  return Number(result) === 1;
+}
 ```
 
 ### Решение 2: Redis Sliding Window (Sorted Set)
 
-```python
-import redis
-import time
+```javascript
+const Redis = require('ioredis');
 
-r = redis.Redis()
+const redis = new Redis();
 
-def allow_request(user_id, limit=100, window=60):
-    key = f"rate_limit:{user_id}"
-    now = time.time()
-    window_start = now - window
+async function allowRequest(userId, { limit = 100, window = 60 } = {}) {
+  const key = `rate_limit:${userId}`;
+  const now = Date.now() / 1000;
+  const windowStart = now - window;
 
-    # Remove old entries
-    r.zremrangebyscore(key, 0, window_start)
+  await redis.zremrangebyscore(key, 0, windowStart);
 
-    # Count requests in window
-    count = r.zcard(key)
+  const count = await redis.zcard(key);
 
-    if count < limit:
-        # Add new request
-        r.zadd(key, {str(now): now})
-        r.expire(key, window)
-        return True
-    else:
-        return False
+  if (count < limit) {
+    await redis.zadd(key, now, String(now));
+    await redis.expire(key, window);
+    return true;
+  }
+
+  return false;
+}
 ```
 
 **Lua script для atomicity**:
@@ -588,48 +593,51 @@ end
 
 ### Решение 3: Token Bucket в Redis
 
-```python
-import redis
-import time
+```javascript
+const Redis = require('ioredis');
 
-r = redis.Redis()
+const redis = new Redis();
 
-def allow_request(user_id, capacity=100, refill_rate=10):
-    key = f"rate_limit:{user_id}"
+const tokenBucketScript = `
+local key = KEYS[1]
+local capacity = tonumber(ARGV[1])
+local refill_rate = tonumber(ARGV[2])
+local now = tonumber(ARGV[3])
 
-    lua_script = """
-    local key = KEYS[1]
-    local capacity = tonumber(ARGV[1])
-    local refill_rate = tonumber(ARGV[2])
-    local now = tonumber(ARGV[3])
+local bucket = redis.call('hmget', key, 'tokens', 'last_refill')
+local tokens = tonumber(bucket[1]) or capacity
+local last_refill = tonumber(bucket[2]) or now
 
-    local bucket = redis.call('hmget', key, 'tokens', 'last_refill')
-    local tokens = tonumber(bucket[1]) or capacity
-    local last_refill = tonumber(bucket[2]) or now
+local elapsed = now - last_refill
+local tokens_to_add = elapsed * refill_rate
+tokens = math.min(capacity, tokens + tokens_to_add)
 
-    -- Refill tokens
-    local elapsed = now - last_refill
-    local tokens_to_add = elapsed * refill_rate
-    tokens = math.min(capacity, tokens + tokens_to_add)
+if tokens >= 1 then
+    tokens = tokens - 1
+    redis.call('hmset', key, 'tokens', tokens, 'last_refill', now)
+    redis.call('expire', key, 3600)
+    return 1
+else
+    return 0
+end
+`;
 
-    -- Check availability
-    if tokens >= 1 then
-        tokens = tokens - 1
-        redis.call('hmset', key, 'tokens', tokens, 'last_refill', now)
-        redis.call('expire', key, 3600)
-        return 1
-    else
-        return 0
-    end
-    """
+redis.defineCommand('consumeToken', {
+  numberOfKeys: 1,
+  lua: tokenBucketScript,
+});
 
-    script = r.register_script(lua_script)
-    result = script(
-        keys=[key],
-        args=[capacity, refill_rate, time.time()]
-    )
+async function allowRequest(userId, { capacity = 100, refillRate = 10 } = {}) {
+  const now = Math.floor(Date.now() / 1000);
+  const result = await redis.consumeToken(
+    `rate_limit:${userId}`,
+    capacity,
+    refillRate,
+    now,
+  );
 
-    return result == 1
+  return Number(result) === 1;
+}
 ```
 
 ### Performance Considerations
@@ -641,40 +649,46 @@ def allow_request(user_id, capacity=100, refill_rate=10):
 
 **Optimization**: Local cache + eventual consistency
 
-```python
-import redis
-import time
-from collections import defaultdict
+```javascript
+class HybridRateLimiter {
+  constructor(redisClient, { limit, window }) {
+    this.redis = redisClient;
+    this.limit = limit;
+    this.window = window;
+    this.localCache = new Map();
+  }
 
-class HybridRateLimiter:
-    def __init__(self, redis_client, limit, window):
-        self.redis = redis_client
-        self.limit = limit
-        self.window = window
-        self.local_cache = defaultdict(lambda: {'count': 0, 'reset': time.time()})
+  async allowRequest(userId) {
+    const now = Date.now() / 1000;
+    const cache =
+      this.localCache.get(userId) ?? { count: 0, reset: now + this.window };
 
-    def allow_request(self, user_id):
-        now = time.time()
+    if (now > cache.reset) {
+      cache.count = 0;
+      cache.reset = now + this.window;
+    }
 
-        # Check local cache first (fast path)
-        cache = self.local_cache[user_id]
-        if now > cache['reset']:
-            cache['count'] = 0
-            cache['reset'] = now + self.window
+    cache.count += 1;
+    this.localCache.set(userId, cache);
 
-        cache['count'] += 1
+    if (cache.count > this.limit * 0.9) {
+      const key = `rate_limit:${userId}`;
+      const count = await this.redis.incr(key);
 
-        # If close to limit, check Redis (authoritative)
-        if cache['count'] > self.limit * 0.9:  # 90% of limit
-            key = f"rate_limit:{user_id}"
-            count = self.redis.incr(key)
-            if count == 1:
-                self.redis.expire(key, self.window)
+      if (count === 1) {
+        await this.redis.expire(key, this.window);
+      }
 
-            if count > self.limit:
-                return False
+      if (count > this.limit) {
+        return false;
+      }
+    }
 
-        return cache['count'] <= self.limit
+    return cache.count <= this.limit;
+  }
+}
+
+const hybridLimiter = new HybridRateLimiter(redis, { limit: 100, window: 60 });
 ```
 
 ## HTTP Response Headers
@@ -755,16 +769,16 @@ app.use('/api/', rateLimitMiddleware);
 
 ### 1. Per User
 
-```python
-key = f"rate_limit:user:{user_id}"
+```javascript
+const key = `rate_limit:user:${userId}`;
 ```
 
 **Use case**: Authenticated API
 
 ### 2. Per IP
 
-```python
-key = f"rate_limit:ip:{ip_address}"
+```javascript
+const key = `rate_limit:ip:${ipAddress}`;
 ```
 
 **Use case**: Public endpoints, login pages
@@ -773,44 +787,47 @@ key = f"rate_limit:ip:{ip_address}"
 
 ### 3. Per API Key
 
-```python
-key = f"rate_limit:apikey:{api_key}"
+```javascript
+const key = `rate_limit:apikey:${apiKey}`;
 ```
 
 **Use case**: Third-party API access
 
 ### 4. Per Endpoint
 
-```python
-key = f"rate_limit:{user_id}:{endpoint}"
+```javascript
+const key = `rate_limit:${userId}:${endpoint}`;
 
-# Example:
-# rate_limit:user_123:/api/search  → 10 req/min
-# rate_limit:user_123:/api/profile → 100 req/min
+// Example:
+// rate_limit:user_123:/api/search  → 10 req/min
+// rate_limit:user_123:/api/profile → 100 req/min
 ```
 
 **Use case**: Разные limits для разных endpoints
 
 ### 5. Global
 
-```python
-key = "rate_limit:global"
+```javascript
+const key = 'rate_limit:global';
 ```
 
 **Use case**: Защита от общего overload
 
 ### 6. Tiered (по тарифному плану)
 
-```python
-def get_limit(user):
-    if user.plan == 'free':
-        return 100  # req/hour
-    elif user.plan == 'basic':
-        return 1000
-    elif user.plan == 'premium':
-        return 10000
-    else:
-        return 10  # default
+```javascript
+function getLimit(user) {
+  if (user.plan === 'free') {
+    return 100; // req/hour
+  }
+  if (user.plan === 'basic') {
+    return 1000;
+  }
+  if (user.plan === 'premium') {
+    return 10000;
+  }
+  return 10; // default
+}
 ```
 
 ## Advanced Techniques
@@ -819,66 +836,77 @@ def get_limit(user):
 
 Динамическое изменение limits на основе нагрузки:
 
-```python
-def get_dynamic_limit():
-    cpu_usage = psutil.cpu_percent()
+```javascript
+const os = require('os');
 
-    if cpu_usage > 80:
-        return 50  # Reduce limit under high load
-    elif cpu_usage > 60:
-        return 75
-    else:
-        return 100  # Normal limit
+function getDynamicLimit() {
+  const cpuLoad = (os.loadavg()[0] / os.cpus().length) * 100;
+
+  if (cpuLoad > 80) {
+    return 50; // Reduce limit under high load
+  }
+  if (cpuLoad > 60) {
+    return 75;
+  }
+  return 100; // Normal limit
+}
 ```
 
 ### 2. Rate Limiting по cost
 
 Разные requests имеют разный "вес":
 
-```python
-def calculate_cost(request):
-    if request.endpoint == '/search':
-        return 10  # Expensive
-    elif request.endpoint == '/profile':
-        return 1   # Cheap
-    else:
-        return 5   # Medium
+```javascript
+function calculateCost(request) {
+  if (request.endpoint === '/search') {
+    return 10; // Expensive
+  }
+  if (request.endpoint === '/profile') {
+    return 1; // Cheap
+  }
+  return 5; // Medium
+}
 
-# Token bucket с cost
-if bucket.tokens >= cost:
-    bucket.tokens -= cost
-    return True
+// Token bucket с cost
+if (bucket.tokens >= cost) {
+  bucket.tokens -= cost;
+  return true;
+}
 ```
 
 ### 3. Throttling (замедление вместо блокировки)
 
-```python
-def throttle_request(user_id, limit=100, window=60):
-    count = get_request_count(user_id, window)
+```javascript
+async function throttleRequest(userId, { limit = 100, window = 60 } = {}) {
+  const count = await getRequestCount(userId, window);
 
-    if count > limit:
-        # Добавляем задержку
-        delay = min((count - limit) * 0.1, 5)  # max 5 sec
-        time.sleep(delay)
+  if (count > limit) {
+    const delay = Math.min((count - limit) * 100, 5000); // max 5 sec
+    await new Promise((resolve) => setTimeout(resolve, delay));
+  }
 
-    return True  # Всегда allow, но с delay
+  return true; // Всегда allow, но с delay
+}
 ```
 
 ### 4. Whitelist / Blacklist
 
-```python
-WHITELISTED_IPS = {'203.0.113.0', '198.51.100.0'}
-BLACKLISTED_IPS = {'192.0.2.0'}
+```javascript
+const WHITELISTED_IPS = new Set(['203.0.113.0', '198.51.100.0']);
+const BLACKLISTED_IPS = new Set(['192.0.2.0']);
 
-def allow_request(ip, user_id):
-    if ip in BLACKLISTED_IPS:
-        return False
+function allowRequest(ip, userId) {
+  if (BLACKLISTED_IPS.has(ip)) {
+    return false;
+  }
 
-    if ip in WHITELISTED_IPS:
-        return True  # No rate limit
+  if (WHITELISTED_IPS.has(ip)) {
+    return true; // No rate limit
+  }
 
-    # Normal rate limiting
-    return check_rate_limit(user_id)
+  // Normal rate limiting
+  return checkRateLimit(userId);
+}
 ```
 
 ## Практические рекомендации
@@ -904,14 +932,20 @@ Heavy API: 10000 requests per day
 
 ### 3. Graceful degradation
 
-```python
-def handle_request():
-    try:
-        if not rate_limiter.allow_request(user_id):
-            return cached_response_if_available()
-    except RedisConnectionError:
-        # Fallback если Redis недоступен
-        return allow_request_local()
+```javascript
+async function handleRequest() {
+  try {
+    if (!(await rateLimiter.allowRequest(userId))) {
+      return cachedResponseIfAvailable();
+    }
+  } catch (error) {
+    if (error.message.includes('ECONNREFUSED')) {
+      // Fallback если Redis недоступен
+      return allowRequestLocal();
+    }
+    throw error;
+  }
+}
 ```
 
 ### 4. Monitoring
@@ -924,14 +958,28 @@ def handle_request():
 
 ## Популярные библиотеки
 
-### 1. Python: django-ratelimit
+### 1. Node.js: rate-limiter-flexible
 
-```python
-from django_ratelimit.decorators import ratelimit
+```javascript
+const { RateLimiterRedis } = require('rate-limiter-flexible');
+const Redis = require('ioredis');
 
-@ratelimit(key='ip', rate='100/h')
-def my_view(request):
-    return HttpResponse("Success")
+const redisClient = new Redis();
+
+const rateLimiter = new RateLimiterRedis({
+  storeClient: redisClient,
+  points: 100,
+  duration: 60,
+});
+
+app.use(async (req, res, next) => {
+  try {
+    await rateLimiter.consume(req.ip);
+    next();
+  } catch (error) {
+    res.status(429).send('Too Many Requests');
+  }
+});
 ```
 
 ### 2. Node.js: express-rate-limit
@@ -957,23 +1005,24 @@ redis-cli CL.THROTTLE user123 15 30 60 1
 # → [allowed?, current_limit, remaining, retry_after, reset_after]
 ```
 
-```python
-import redis
+```javascript
+const Redis = require('ioredis');
 
-r = redis.Redis()
+const redisCellClient = new Redis();
 
-def allow_request(user_id):
-    # CL.THROTTLE key max_burst count_per_period period [quantity]
-    result = r.execute_command(
-        'CL.THROTTLE', f'user:{user_id}',
-        15,  # max_burst
-        30,  # count_per_period
-        60,  # period (seconds)
-        1    # quantity (default 1)
-    )
+async function allowRequest(userId) {
+  // CL.THROTTLE key max_burst count_per_period period [quantity]
+  const [allowed] = await redisCellClient.call(
+    'CL.THROTTLE',
+    `user:${userId}`,
+    15, // max_burst
+    30, // count_per_period
+    60, // period (seconds)
+    1, // quantity (default 1)
+  );
 
-    allowed = result[0] == 0
-    return allowed
+  return allowed === 0;
+}
 ```
 
 ## Что почитать дальше

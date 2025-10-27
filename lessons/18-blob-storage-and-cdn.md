@@ -32,72 +32,92 @@ Bucket (container)
 ```
 
 **Создание bucket**:
-```python
-import boto3
+```javascript
+const { S3Client, CreateBucketCommand } = require('@aws-sdk/client-s3');
 
-s3 = boto3.client('s3')
+const s3 = new S3Client({ region: 'us-east-1' });
 
-# Create bucket
-s3.create_bucket(Bucket='my-app-images')
+// Create bucket
+await s3.send(new CreateBucketCommand({ Bucket: 'my-app-images' }));
 ```
 
 **Upload объекта**:
-```python
-# Upload file
-s3.upload_file(
-    Filename='local/path/image.jpg',
-    Bucket='my-app-images',
-    Key='uploads/2024/01/image.jpg'
-)
+```javascript
+const fs = require('fs');
+const { PutObjectCommand } = require('@aws-sdk/client-s3');
 
-# Upload from memory
-s3.put_object(
-    Bucket='my-app-images',
-    Key='uploads/data.json',
-    Body=json.dumps(data),
-    ContentType='application/json'
-)
+// Upload file
+await s3.send(
+  new PutObjectCommand({
+    Bucket: 'my-app-images',
+    Key: 'uploads/2024/01/image.jpg',
+    Body: fs.createReadStream('local/path/image.jpg'),
+  }),
+);
+
+// Upload from memory
+await s3.send(
+  new PutObjectCommand({
+    Bucket: 'my-app-images',
+    Key: 'uploads/data.json',
+    Body: JSON.stringify(data),
+    ContentType: 'application/json',
+  }),
+);
 ```
 
 **Download объекта**:
-```python
-# Download to file
-s3.download_file(
-    Bucket='my-app-images',
-    Key='uploads/2024/01/image.jpg',
-    Filename='local/path/downloaded.jpg'
-)
+```javascript
+const { GetObjectCommand } = require('@aws-sdk/client-s3');
+const { pipeline } = require('stream/promises');
 
-# Download to memory
-response = s3.get_object(Bucket='my-app-images', Key='uploads/data.json')
-content = response['Body'].read()
+// Download to file
+const downloadResponse = await s3.send(
+  new GetObjectCommand({
+    Bucket: 'my-app-images',
+    Key: 'uploads/2024/01/image.jpg',
+  }),
+);
+await pipeline(downloadResponse.Body, fs.createWriteStream('local/path/downloaded.jpg'));
+
+// Download to memory
+const memoryResponse = await s3.send(
+  new GetObjectCommand({
+    Bucket: 'my-app-images',
+    Key: 'uploads/data.json',
+  }),
+);
+const content = await memoryResponse.Body.transformToString();
 ```
 
 **Генерация presigned URL**:
-```python
-# Temporary URL для upload
-presigned_upload_url = s3.generate_presigned_url(
-    'put_object',
-    Params={
-        'Bucket': 'my-app-images',
-        'Key': 'uploads/user-photo.jpg',
-        'ContentType': 'image/jpeg'
-    },
-    ExpiresIn=3600  # 1 hour
-)
+```javascript
+const { getSignedUrl } = require('@aws-sdk/s3-request-presigner');
+const { PutObjectCommand, GetObjectCommand } = require('@aws-sdk/client-s3');
 
-# Client может upload directly к S3
-# PUT to presigned_upload_url
+// Temporary URL для upload
+const presignedUploadUrl = await getSignedUrl(
+  s3,
+  new PutObjectCommand({
+    Bucket: 'my-app-images',
+    Key: 'uploads/user-photo.jpg',
+    ContentType: 'image/jpeg',
+  }),
+  { expiresIn: 3600 },
+);
 
-# Temporary URL для download
-presigned_download_url = s3.generate_presigned_url(
-    'get_object',
-    Params={
-        'Bucket': 'my-app-images',
-        'Key': 'uploads/user-photo.jpg'
-    },
-    ExpiresIn=3600
-)
+// Client может upload directly к S3
+// PUT to presignedUploadUrl
+
+// Temporary URL для download
+const presignedDownloadUrl = await getSignedUrl(
+  s3,
+  new GetObjectCommand({
+    Bucket: 'my-app-images',
+    Key: 'uploads/user-photo.jpg',
+  }),
+  { expiresIn: 3600 },
+);
 ```
 
 ### S3 Storage Classes
@@ -140,22 +160,39 @@ presigned_download_url = s3.generate_presigned_url(
 
 Сохранять все версии объекта.
 
-```python
-# Enable versioning
-s3.put_bucket_versioning(
-    Bucket='my-app-images',
-    VersioningConfiguration={'Status': 'Enabled'}
-)
+```javascript
+const {
+  PutBucketVersioningCommand,
+  ListObjectVersionsCommand,
+  GetObjectCommand,
+  PutObjectCommand,
+} = require('@aws-sdk/client-s3');
 
-# Upload создает новую версию
-s3.put_object(Bucket='my-app-images', Key='file.txt', Body='v1')
-s3.put_object(Bucket='my-app-images', Key='file.txt', Body='v2')
+// Enable versioning
+await s3.send(
+  new PutBucketVersioningCommand({
+    Bucket: 'my-app-images',
+    VersioningConfiguration: { Status: 'Enabled' },
+  }),
+);
 
-# List versions
-versions = s3.list_object_versions(Bucket='my-app-images', Prefix='file.txt')
+// Upload создает новую версию
+await s3.send(new PutObjectCommand({ Bucket: 'my-app-images', Key: 'file.txt', Body: 'v1' }));
+await s3.send(new PutObjectCommand({ Bucket: 'my-app-images', Key: 'file.txt', Body: 'v2' }));
 
-# Get specific version
-s3.get_object(Bucket='my-app-images', Key='file.txt', VersionId='version-id-1')
+// List versions
+const versions = await s3.send(
+  new ListObjectVersionsCommand({ Bucket: 'my-app-images', Prefix: 'file.txt' }),
+);
+
+// Get specific version
+await s3.send(
+  new GetObjectCommand({
+    Bucket: 'my-app-images',
+    Key: 'file.txt',
+    VersionId: 'version-id-1',
+  }),
+);
 ```
 
 **Use cases**:
@@ -194,40 +231,46 @@ s3.get_object(Bucket='my-app-images', Key='file.txt', VersionId='version-id-1')
 ```
 
 **ACL** (legacy, avoid):
-```python
-s3.put_object_acl(
-    Bucket='my-app-images',
-    Key='image.jpg',
-    ACL='public-read'
-)
+```javascript
+const { PutObjectAclCommand } = require('@aws-sdk/client-s3');
+
+await s3.send(
+  new PutObjectAclCommand({
+    Bucket: 'my-app-images',
+    Key: 'image.jpg',
+    ACL: 'public-read',
+  }),
+);
 ```
 
 ### Use Cases для Blob Storage
 
 #### 1. User-generated Content
 
-```python
-# User uploads profile photo
-@app.route('/upload-photo', methods=['POST'])
-def upload_photo():
-    file = request.files['photo']
+```javascript
+// User uploads profile photo
+app.post('/upload-photo', upload.single('photo'), async (req, res) => {
+  const file = req.file;
 
-    # Generate unique filename
-    filename = f"profiles/{current_user.id}/{uuid.uuid4()}.jpg"
+  // Generate unique filename
+  const filename = `profiles/${req.user.id}/${crypto.randomUUID()}.jpg`;
 
-    # Upload to S3
-    s3.upload_fileobj(
-        file,
-        'my-app-images',
-        filename,
-        ExtraArgs={'ContentType': 'image/jpeg'}
-    )
+  // Upload to S3
+  await s3.send(
+    new PutObjectCommand({
+      Bucket: 'my-app-images',
+      Key: filename,
+      Body: file.buffer,
+      ContentType: 'image/jpeg',
+    }),
+  );
 
-    # Save URL в БД
-    user.profile_photo_url = f"https://my-app-images.s3.amazonaws.com/{filename}"
-    db.session.commit()
+  // Save URL в БД
+  const url = `https://my-app-images.s3.amazonaws.com/${filename}`;
+  await db.users.update({ profile_photo_url: url }, { where: { id: req.user.id } });
 
-    return {'url': user.profile_photo_url}
+  res.json({ url });
+});
 ```
 
 #### 2. Static Website Hosting
@@ -244,37 +287,46 @@ aws s3 sync ./dist s3://my-static-site/
 
 #### 3. Backups
 
-```python
-# Database backup to S3
-import gzip
+```javascript
+// Database backup to S3
+const { spawn } = require('child_process');
+const { createWriteStream, createReadStream } = require('fs');
+const { pipeline } = require('stream/promises');
 
-def backup_database():
-    # Export database
-    backup_file = f"backups/db-{datetime.now().isoformat()}.sql.gz"
+async function backupDatabase() {
+  const backupFile = `backups/db-${new Date().toISOString()}.sql.gz`;
+  const tmpPath = '/tmp/backup.sql.gz';
 
-    with gzip.open('/tmp/backup.sql.gz', 'wb') as f:
-        # pg_dump или mysqldump
-        subprocess.run(['pg_dump', 'mydb'], stdout=f)
+  const dumpProcess = spawn('pg_dump', ['mydb']);
+  await pipeline(dumpProcess.stdout, createWriteStream(tmpPath));
 
-    # Upload to S3
-    s3.upload_file('/tmp/backup.sql.gz', 'my-backups', backup_file)
+  await s3.send(
+    new PutObjectCommand({
+      Bucket: 'my-backups',
+      Key: backupFile,
+      Body: createReadStream(tmpPath),
+    }),
+  );
 
-    # Lifecycle policy удалит старые backups
+  // Lifecycle policy удалит старые backups
+}
 ```
 
 #### 4. Video/Audio Streaming
 
-```python
-# Upload video для streaming
-s3.upload_file(
-    'video.mp4',
-    'my-videos',
-    'videos/uuid.mp4',
-    ExtraArgs={'ContentType': 'video/mp4'}
-)
+```javascript
+// Upload video для streaming
+await s3.send(
+  new PutObjectCommand({
+    Bucket: 'my-videos',
+    Key: 'videos/uuid.mp4',
+    Body: fs.createReadStream('video.mp4'),
+    ContentType: 'video/mp4',
+  }),
+);
 
-# CloudFront может stream directly из S3
-video_url = f"https://d111111abcdef8.cloudfront.net/videos/uuid.mp4"
+// CloudFront может stream directly из S3
+const videoUrl = 'https://d111111abcdef8.cloudfront.net/videos/uuid.mp4';
 ```
 
 ## CDN (Content Delivery Network)
@@ -349,50 +401,54 @@ curl -X POST "https://api.cloudflare.com/client/v4/zones/{zone_id}/purge_cache" 
 ### CloudFront Setup
 
 **1. Create distribution**:
-```python
-import boto3
+```javascript
+const { CloudFrontClient, CreateDistributionCommand } = require('@aws-sdk/client-cloudfront');
 
-cloudfront = boto3.client('cloudfront')
+const cloudfront = new CloudFrontClient({ region: 'us-east-1' });
 
-response = cloudfront.create_distribution(
-    DistributionConfig={
-        'CallerReference': str(time.time()),
-        'Origins': {
-            'Quantity': 1,
-            'Items': [{
-                'Id': 'S3-my-app-images',
-                'DomainName': 'my-app-images.s3.amazonaws.com',
-                'S3OriginConfig': {
-                    'OriginAccessIdentity': ''
-                }
-            }]
+const response = await cloudfront.send(
+  new CreateDistributionCommand({
+    DistributionConfig: {
+      CallerReference: Date.now().toString(),
+      Origins: {
+        Quantity: 1,
+        Items: [
+          {
+            Id: 'S3-my-app-images',
+            DomainName: 'my-app-images.s3.amazonaws.com',
+            S3OriginConfig: {
+              OriginAccessIdentity: '',
+            },
+          },
+        ],
+      },
+      DefaultCacheBehavior: {
+        TargetOriginId: 'S3-my-app-images',
+        ViewerProtocolPolicy: 'redirect-to-https',
+        AllowedMethods: {
+          Quantity: 2,
+          Items: ['GET', 'HEAD'],
         },
-        'DefaultCacheBehavior': {
-            'TargetOriginId': 'S3-my-app-images',
-            'ViewerProtocolPolicy': 'redirect-to-https',
-            'AllowedMethods': {
-                'Quantity': 2,
-                'Items': ['GET', 'HEAD']
-            },
-            'CachedMethods': {
-                'Quantity': 2,
-                'Items': ['GET', 'HEAD']
-            },
-            'ForwardedValues': {
-                'QueryString': False,
-                'Cookies': {'Forward': 'none'}
-            },
-            'MinTTL': 0,
-            'DefaultTTL': 86400,
-            'MaxTTL': 31536000
+        CachedMethods: {
+          Quantity: 2,
+          Items: ['GET', 'HEAD'],
         },
-        'Enabled': True,
-        'Comment': 'CDN for images'
-    }
-)
+        ForwardedValues: {
+          QueryString: false,
+          Cookies: { Forward: 'none' },
+        },
+        MinTTL: 0,
+        DefaultTTL: 86400,
+        MaxTTL: 31536000,
+      },
+      Enabled: true,
+      Comment: 'CDN for images',
+    },
+  }),
+);
 
-distribution_domain = response['Distribution']['DomainName']
-# Example: d111111abcdef8.cloudfront.net
+const distributionDomain = response.Distribution.DomainName;
+// Example: d111111abcdef8.cloudfront.net
 ```
 
 **2. Custom domain**:
@@ -451,20 +507,19 @@ Cache: max-age=60 (1 minute) или no-cache
 
 #### 3. API Responses
 
-```python
-@app.route('/api/products')
-def get_products():
-    products = db.query("SELECT * FROM products")
+```javascript
+app.get('/api/products', async (req, res) => {
+  const products = await db.query('SELECT * FROM products');
 
-    # Cache на CDN
-    response = jsonify(products)
-    response.headers['Cache-Control'] = 'public, max-age=300'  # 5 min
-    return response
+  // Cache на CDN
+  res.set('Cache-Control', 'public, max-age=300'); // 5 min
+  res.json(products);
+});
 ```
 
 **Vary header** для персонализации:
-```python
-response.headers['Vary'] = 'Accept-Language, Accept-Encoding'
+```javascript
+res.set('Vary', 'Accept-Language, Accept-Encoding');
 ```
 
 #### 4. Personalized Content
@@ -610,24 +665,24 @@ CloudFront Origin Shield — дополнительный caching layer
 ```
 
 **Implementation**:
-```python
-@app.route('/api/upload-url', methods=['POST'])
-def get_upload_url():
-    # Generate unique filename
-    filename = f"uploads/{current_user.id}/{uuid.uuid4()}.jpg"
+```javascript
+app.post('/api/upload-url', async (req, res) => {
+  // Generate unique filename
+  const filename = `uploads/${req.user.id}/${crypto.randomUUID()}.jpg`;
 
-    # Presigned URL для upload
-    upload_url = s3.generate_presigned_url(
-        'put_object',
-        Params={
-            'Bucket': 'my-app-images',
-            'Key': filename,
-            'ContentType': 'image/jpeg'
-        },
-        ExpiresIn=300  # 5 minutes
-    )
+  // Presigned URL для upload
+  const uploadUrl = await getSignedUrl(
+    s3,
+    new PutObjectCommand({
+      Bucket: 'my-app-images',
+      Key: filename,
+      ContentType: 'image/jpeg',
+    }),
+    { expiresIn: 300 },
+  );
 
-    return {'uploadUrl': upload_url, 'key': filename}
+  res.json({ uploadUrl, key: filename });
+});
 
 # Client
 async function uploadImage(file) {
@@ -650,36 +705,43 @@ async function uploadImage(file) {
 ```
 
 **Lambda trigger** (on S3 upload):
-```python
-import boto3
-from PIL import Image
+```javascript
+const { S3Client, GetObjectCommand, PutObjectCommand } = require('@aws-sdk/client-s3');
+const sharp = require('sharp');
 
-s3 = boto3.client('s3')
+const s3 = new S3Client({ region: 'us-east-1' });
 
-def lambda_handler(event, context):
-    # S3 event
-    bucket = event['Records'][0]['s3']['bucket']['name']
-    key = event['Records'][0]['s3']['object']['key']
+exports.handler = async (event) => {
+  const record = event.Records[0];
+  const bucket = record.s3.bucket.name;
+  const key = decodeURIComponent(record.s3.object.key.replace(/\+/g, ' '));
 
-    # Download image
-    s3.download_file(bucket, key, '/tmp/original.jpg')
+  // Download image
+  const original = await s3.send(new GetObjectCommand({ Bucket: bucket, Key: key }));
+  const imageBuffer = Buffer.from(await original.Body.transformToByteArray());
 
-    # Create thumbnail
-    img = Image.open('/tmp/original.jpg')
-    img.thumbnail((200, 200))
-    img.save('/tmp/thumbnail.jpg')
+  // Create thumbnail
+  const thumbnailBuffer = await sharp(imageBuffer).resize(200, 200).toBuffer();
 
-    # Upload thumbnail
-    thumbnail_key = key.replace('uploads/', 'thumbnails/')
-    s3.upload_file('/tmp/thumbnail.jpg', bucket, thumbnail_key)
+  // Upload thumbnail
+  const thumbnailKey = key.replace('uploads/', 'thumbnails/');
+  await s3.send(
+    new PutObjectCommand({
+      Bucket: bucket,
+      Key: thumbnailKey,
+      Body: thumbnailBuffer,
+      ContentType: 'image/jpeg',
+    }),
+  );
 
-    # Save metadata to DB
-    db.execute(
-        "INSERT INTO images (key, thumbnail_key, user_id) VALUES (?, ?, ?)",
-        (key, thumbnail_key, extract_user_id(key))
-    )
+  // Save metadata to DB
+  await db.execute(
+    'INSERT INTO images (key, thumbnail_key, user_id) VALUES (?, ?, ?)',
+    [key, thumbnailKey, extractUserId(key)],
+  );
 
-    return {'statusCode': 200}
+  return { statusCode: 200 };
+};
 ```
 
 ### Delivery Flow
@@ -741,18 +803,21 @@ Examples:
 
 ### 2. Security
 
-```python
-# Never make bucket public
-# Use presigned URLs для temporary access
+```javascript
+// Never make bucket public
+// Use presigned URLs для temporary access
 
-# CloudFront signed URLs для private content
-from botocore.signers import CloudFrontSigner
+// CloudFront signed URLs для private content
+const { getSignedUrl } = require('@aws-sdk/cloudfront-signer');
 
-def signed_url(resource):
-    return cloudfront_signer.generate_presigned_url(
-        resource,
-        date_less_than=datetime.now() + timedelta(hours=1)
-    )
+function signedUrl(resource) {
+  return getSignedUrl({
+    url: resource,
+    keyPairId: process.env.CLOUDFRONT_KEY_PAIR_ID,
+    privateKey: process.env.CLOUDFRONT_PRIVATE_KEY,
+    dateLessThan: new Date(Date.now() + 60 * 60 * 1000),
+  });
+}
 ```
 
 ### 3. Monitoring

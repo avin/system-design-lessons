@@ -6,14 +6,14 @@
 
 ### Наивный подход: Modulo Hashing
 
-```python
-server_index = hash(key) % num_servers
+```javascript
+const serverIndex = hash(key) % numServers;
 
-# Пример:
-# hash("user_123") = 987654321
-# 987654321 % 3 = 0 → Сервер 0
-# hash("user_456") = 123456789
-# 123456789 % 3 = 2 → Сервер 2
+// Пример:
+// hash("user_123") = 987654321
+// 987654321 % 3 = 0 → Сервер 0
+// hash("user_456") = 123456789
+// 123456789 % 3 = 2 → Сервер 2
 ```
 
 **Работает отлично... до тех пор, пока число серверов не меняется.**
@@ -138,14 +138,14 @@ Server C: ключи от 110 до 120 (маленький диапазон)
 
 **Идея**: Каждый физический сервер представлен множеством виртуальных узлов на кольце.
 
-```python
-# Вместо одного hash(server_A)
-# Создаем 100-500 виртуальных узлов:
-hash("server_A#1")
-hash("server_A#2")
-hash("server_A#3")
-...
-hash("server_A#100")
+```javascript
+// Вместо одного hash("server_A")
+// Создаем 100-500 виртуальных узлов:
+hash('server_A#1');
+hash('server_A#2');
+hash('server_A#3');
+// ...
+hash('server_A#100');
 ```
 
 ### Кольцо с виртуальными узлами
@@ -168,75 +168,87 @@ hash("server_A#100")
 
 ## Реализация
 
-### Простая имплементация на Python
+### Простая имплементация на Node.js
 
-```python
-import hashlib
-from bisect import bisect_right
+```javascript
+const crypto = require('crypto');
 
-class ConsistentHash:
-    def __init__(self, num_virtual_nodes=100):
-        self.num_virtual_nodes = num_virtual_nodes
-        self.ring = {}  # hash_value -> server_name
-        self.sorted_keys = []  # отсортированные hash values
+class ConsistentHash {
+  constructor({ numVirtualNodes = 100 } = {}) {
+    this.numVirtualNodes = numVirtualNodes;
+    this.ring = new Map(); // hashValue -> serverName
+    this.sortedKeys = []; // отсортированные hash values (BigInt)
+  }
 
-    def _hash(self, key):
-        """Hash function"""
-        return int(hashlib.md5(key.encode()).hexdigest(), 16)
+  hash(key) {
+    return BigInt('0x' + crypto.createHash('md5').update(key).digest('hex'));
+  }
 
-    def add_server(self, server_name):
-        """Добавить сервер с виртуальными узлами"""
-        for i in range(self.num_virtual_nodes):
-            virtual_key = f"{server_name}#{i}"
-            hash_value = self._hash(virtual_key)
-            self.ring[hash_value] = server_name
-            self.sorted_keys.append(hash_value)
+  addServer(serverName) {
+    for (let i = 0; i < this.numVirtualNodes; i += 1) {
+      const virtualKey = `${serverName}#${i}`;
+      const hashValue = this.hash(virtualKey);
+      this.ring.set(hashValue, serverName);
+      this.sortedKeys.push(hashValue);
+    }
 
-        # Сортируем после добавления
-        self.sorted_keys.sort()
+    this.sortedKeys.sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
+  }
 
-    def remove_server(self, server_name):
-        """Удалить сервер и его виртуальные узлы"""
-        for i in range(self.num_virtual_nodes):
-            virtual_key = f"{server_name}#{i}"
-            hash_value = self._hash(virtual_key)
-            del self.ring[hash_value]
-            self.sorted_keys.remove(hash_value)
+  removeServer(serverName) {
+    for (let i = 0; i < this.numVirtualNodes; i += 1) {
+      const virtualKey = `${serverName}#${i}`;
+      const hashValue = this.hash(virtualKey);
+      this.ring.delete(hashValue);
+      const index = this.sortedKeys.findIndex((value) => value === hashValue);
+      if (index !== -1) {
+        this.sortedKeys.splice(index, 1);
+      }
+    }
+  }
 
-    def get_server(self, key):
-        """Найти сервер для ключа"""
-        if not self.ring:
-            return None
+  getServer(key) {
+    if (this.sortedKeys.length === 0) {
+      return null;
+    }
 
-        hash_value = self._hash(key)
+    const hashValue = this.hash(key);
+    let low = 0;
+    let high = this.sortedKeys.length;
 
-        # Найти первый сервер по часовой стрелке
-        index = bisect_right(self.sorted_keys, hash_value)
+    while (low < high) {
+      const mid = Math.floor((low + high) / 2);
+      if (this.sortedKeys[mid] <= hashValue) {
+        low = mid + 1;
+      } else {
+        high = mid;
+      }
+    }
 
-        # Если вышли за пределы, wrap around к началу
-        if index == len(self.sorted_keys):
-            index = 0
+    const index = low === this.sortedKeys.length ? 0 : low;
+    const serverKey = this.sortedKeys[index];
+    return this.ring.get(serverKey);
+  }
+}
 
-        return self.ring[self.sorted_keys[index]]
+// Использование
+const hashRing = new ConsistentHash({ numVirtualNodes: 150 });
 
-# Использование
-ch = ConsistentHash(num_virtual_nodes=150)
+// Добавляем серверы
+hashRing.addServer('server_A');
+hashRing.addServer('server_B');
+hashRing.addServer('server_C');
 
-# Добавляем серверы
-ch.add_server("server_A")
-ch.add_server("server_B")
-ch.add_server("server_C")
+// Определяем, на каком сервере лежат ключи
+console.log(hashRing.getServer('user_123')); // server_B
+console.log(hashRing.getServer('user_456')); // server_A
+console.log(hashRing.getServer('user_789')); // server_C
 
-# Определяем, на каком сервере лежат ключи
-print(ch.get_server("user_123"))  # server_B
-print(ch.get_server("user_456"))  # server_A
-print(ch.get_server("user_789"))  # server_C
+// Добавляем новый сервер
+hashRing.addServer('server_D');
 
-# Добавляем новый сервер
-ch.add_server("server_D")
-
-# Только часть ключей переместится
-print(ch.get_server("user_123"))  # может измениться
+// Только часть ключей переместится
+console.log(hashRing.getServer('user_123')); // может измениться
 ```
 
 ### Оптимизация: Binary Search
@@ -287,17 +299,24 @@ N = количество серверов
 **Решение**: Consistent hashing позволяет добавлять/удалять серверы без массового rehash.
 
 **Пример (Memcached)**:
-```python
-servers = ["cache1:11211", "cache2:11211", "cache3:11211"]
-ch = ConsistentHash()
-for server in servers:
-    ch.add_server(server)
+```javascript
+const Memcached = require('memcached');
 
-# Получаем значение
-key = "user:123:profile"
-server = ch.get_server(key)
-cache_client = memcache.Client([server])
-value = cache_client.get(key)
+const servers = ['cache1:11211', 'cache2:11211', 'cache3:11211'];
+const hashRing = new ConsistentHash();
+servers.forEach((server) => hashRing.addServer(server));
+
+// Получаем значение
+const key = 'user:123:profile';
+const server = hashRing.getServer(key);
+const cacheClient = new Memcached(server);
+cacheClient.get(key, (err, value) => {
+  if (err) {
+    console.error(err);
+    return;
+  }
+  console.log(value);
+});
 ```
 
 ### 2. Load Balancing
@@ -307,11 +326,11 @@ value = cache_client.get(key)
 **Решение**: Hash session ID и направляйте на тот же сервер.
 
 **Пример**:
-```python
-# Пользователь с session_id всегда попадает на тот же app server
-session_id = request.cookies.get("session_id")
-server = ch.get_server(session_id)
-proxy_to(server)
+```javascript
+// Пользователь с sessionId всегда попадает на тот же app server
+const sessionId = request.cookies.sessionId;
+const server = hashRing.getServer(sessionId);
+proxyTo(server);
 ```
 
 ### 3. Data Partitioning (Cassandra, DynamoDB)
@@ -332,9 +351,9 @@ proxy_to(server)
 **Решение**: Hash URL контента для определения серверов.
 
 **Пример**:
-```python
-url = "https://example.com/images/photo.jpg"
-servers = ch.get_servers(url, count=3)  # 3 ближайших сервера для репликации
+```javascript
+const url = 'https://example.com/images/photo.jpg';
+const servers = hashRing.getServers(url, { count: 3 }); // 3 ближайших сервера для репликации
 ```
 
 ### 5. Distributed Storage (Amazon S3, HDFS)
@@ -351,23 +370,25 @@ servers = ch.get_servers(url, count=3)  # 3 ближайших сервера д
 
 **Решение**: Больше виртуальных узлов для мощных серверов.
 
-```python
-class WeightedConsistentHash(ConsistentHash):
-    def add_server(self, server_name, weight=1):
-        """Weight определяет количество виртуальных узлов"""
-        num_vnodes = int(self.num_virtual_nodes * weight)
-        for i in range(num_vnodes):
-            virtual_key = f"{server_name}#{i}"
-            hash_value = self._hash(virtual_key)
-            self.ring[hash_value] = server_name
-            self.sorted_keys.append(hash_value)
-        self.sorted_keys.sort()
+```javascript
+class WeightedConsistentHash extends ConsistentHash {
+  addServer(serverName, weight = 1) {
+    const numVnodes = Math.floor(this.numVirtualNodes * weight);
+    for (let i = 0; i < numVnodes; i += 1) {
+      const virtualKey = `${serverName}#${i}`;
+      const hashValue = this.hash(virtualKey);
+      this.ring.set(hashValue, serverName);
+      this.sortedKeys.push(hashValue);
+    }
 
-# Использование
-ch = WeightedConsistentHash()
-ch.add_server("server_A", weight=1)    # 100 vnodes
-ch.add_server("server_B", weight=2)    # 200 vnodes (2x мощнее)
-ch.add_server("server_C", weight=0.5)  # 50 vnodes (0.5x мощнее)
+    this.sortedKeys.sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
+  }
+}
+
+const weightedRing = new WeightedConsistentHash();
+weightedRing.addServer('server_A', 1); // 100 vnodes
+weightedRing.addServer('server_B', 2); // 200 vnodes (2x мощнее)
+weightedRing.addServer('server_C', 0.5); // 50 vnodes (0.5x мощнее)
 ```
 
 ### 2. Jump Consistent Hash
@@ -393,18 +414,21 @@ ch.add_server("server_C", weight=0.5)  # 50 vnodes (0.5x мощнее)
 1. Для каждого ключа вычисляем weight для всех серверов
 2. Выбираем сервер с максимальным weight
 
-```python
-def get_server_hrw(key, servers):
-    max_weight = -1
-    selected_server = None
+```javascript
+function getServerHRW(key, servers) {
+  let maxWeight = -Infinity;
+  let selectedServer = null;
 
-    for server in servers:
-        weight = hash(key + server)
-        if weight > max_weight:
-            max_weight = weight
-            selected_server = server
+  servers.forEach((server) => {
+    const weight = hash(key + server);
+    if (weight > maxWeight) {
+      maxWeight = weight;
+      selectedServer = server;
+    }
+  });
 
-    return selected_server
+  return selectedServer;
+}
 ```
 
 **Преимущества**:
@@ -437,17 +461,19 @@ Replication factor 3 → также на Node C и Node A
 
 ### Memcached (с библиотеками типа ketama)
 
-```python
-# Ketama algorithm — популярная реализация consistent hashing
-import pylibmc
+```javascript
+// Ketama algorithm — популярная реализация consistent hashing
+const Memcached = require('memcached');
 
-mc = pylibmc.Client(
-    ["cache1:11211", "cache2:11211", "cache3:11211"],
-    binary=True,
-    behaviors={"ketama": True}  # включаем consistent hashing
-)
+const memcached = new Memcached(['cache1:11211', 'cache2:11211', 'cache3:11211'], {
+  ketama: true, // включаем consistent hashing
+});
 
-mc.set("key", "value")
+memcached.set('key', 'value', 300, (err) => {
+  if (err) {
+    console.error(err);
+  }
+});
 ```
 
 ### Redis Cluster

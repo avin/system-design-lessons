@@ -85,8 +85,8 @@ Sharding:
 
 **Shard Key** — колонка (или набор колонок), по которой определяется, в какой shard попадет запись.
 
-```python
-shard_id = hash(shard_key) % num_shards
+```javascript
+const shardId = hash(shardKey) % numShards;
 ```
 
 **Выбор shard key критичен!**
@@ -145,14 +145,15 @@ Problem: Все новые данные идут на один shard
 
 **Принцип**: `shard_id = hash(shard_key) % num_shards`
 
-```python
-def get_shard(user_id, num_shards=4):
-    return hash(user_id) % num_shards
+```javascript
+function getShard(userId, numShards = 4) {
+  return hash(userId) % numShards;
+}
 
-# Examples:
-get_shard(123)  # → 3
-get_shard(456)  # → 1
-get_shard(789)  # → 2
+// Examples:
+getShard(123); // → 3
+getShard(456); // → 1
+getShard(789); // → 2
 ```
 
 **Преимущества**:
@@ -240,14 +241,19 @@ Shard Asia: Asia users
 - Latency критична
 
 **Пример**:
-```python
-def get_shard(user_location):
-    if user_location in ['US', 'CA', 'MX']:
-        return 'shard_americas'
-    elif user_location in ['UK', 'DE', 'FR', ...]:
-        return 'shard_europe'
-    elif user_location in ['JP', 'CN', 'IN', ...]:
-        return 'shard_asia'
+```javascript
+function getShard(userLocation) {
+  if (['US', 'CA', 'MX'].includes(userLocation)) {
+    return 'shard_americas';
+  }
+  if (['UK', 'DE', 'FR', /* ... */].includes(userLocation)) {
+    return 'shard_europe';
+  }
+  if (['JP', 'CN', 'IN', /* ... */].includes(userLocation)) {
+    return 'shard_asia';
+  }
+  return 'shard_default';
+}
 ```
 
 ### 4. Directory-based Sharding (Lookup Table)
@@ -378,9 +384,9 @@ Shard 2: 2_1, 2_2, 2_3
 ```
 
 **B. UUID**:
-```python
-import uuid
-id = uuid.uuid4()  # Глобально уникальный
+```javascript
+const { randomUUID } = require('crypto');
+const id = randomUUID(); // Глобально уникальный
 ```
 
 **C. Snowflake ID** (Twitter):
@@ -456,44 +462,52 @@ Move некоторые virtual shards на новый server
 
 Приложение определяет shard для каждой операции.
 
-```python
-class ShardedDatabase:
-    def __init__(self):
-        self.shards = {
-            0: connect('shard0.db'),
-            1: connect('shard1.db'),
-            2: connect('shard2.db'),
-            3: connect('shard3.db'),
-        }
-        self.num_shards = len(self.shards)
+```javascript
+class ShardedDatabase {
+  constructor() {
+    this.shards = new Map([
+      [0, connect('shard0.db')],
+      [1, connect('shard1.db')],
+      [2, connect('shard2.db')],
+      [3, connect('shard3.db')],
+    ]);
+  }
 
-    def get_shard(self, user_id):
-        shard_id = hash(user_id) % self.num_shards
-        return self.shards[shard_id]
+  getShard(userId) {
+    const shardId = hash(userId) % this.shards.size;
+    return this.shards.get(shardId);
+  }
 
-    def insert_user(self, user_id, name, email):
-        shard = self.get_shard(user_id)
-        shard.execute(
-            "INSERT INTO users (id, name, email) VALUES (?, ?, ?)",
-            (user_id, name, email)
-        )
+  async insertUser(userId, name, email) {
+    const shard = this.getShard(userId);
+    await shard.execute('INSERT INTO users (id, name, email) VALUES (?, ?, ?)', [
+      userId,
+      name,
+      email,
+    ]);
+  }
 
-    def get_user(self, user_id):
-        shard = self.get_shard(user_id)
-        return shard.execute("SELECT * FROM users WHERE id = ?", (user_id,))
+  async getUser(userId) {
+    const shard = this.getShard(userId);
+    return shard.execute('SELECT * FROM users WHERE id = ?', [userId]);
+  }
 
-    def get_all_users_by_country(self, country):
-        # Cross-shard query
-        results = []
-        for shard in self.shards.values():
-            rows = shard.execute("SELECT * FROM users WHERE country = ?", (country,))
-            results.extend(rows)
-        return results
+  async getAllUsersByCountry(country) {
+    const results = [];
+    for (const shard of this.shards.values()) {
+      const rows = await shard.execute('SELECT * FROM users WHERE country = ?', [
+        country,
+      ]);
+      results.push(...rows);
+    }
+    return results;
+  }
+}
 
-# Usage
-db = ShardedDatabase()
-db.insert_user(123, 'John', 'john@example.com')
-user = db.get_user(123)
+// Usage
+const db = new ShardedDatabase();
+await db.insertUser(123, 'John', 'john@example.com');
+const user = await db.getUser(123);
 ```
 
 ### Proxy-based Sharding
@@ -566,30 +580,29 @@ SELECT * FROM users WHERE user_id = 123;
 
 **Shard key**: `user_id`
 
-```python
-# Schema
-users (sharded by user_id)
-  - user_id (PK)
-  - username
-  - email
+```javascript
+// Schema
+const users = {
+  shardKey: 'user_id',
+  columns: ['user_id', 'username', 'email'],
+};
 
-posts (sharded by user_id)  # Co-located с users
-  - post_id (PK)
-  - user_id (shard key)
-  - image_url
-  - created_at
+const posts = {
+  shardKey: 'user_id', // Co-located с users
+  columns: ['post_id', 'user_id', 'image_url', 'created_at'],
+};
 
-# Эффективные queries:
-# 1. Get user
-SELECT * FROM users WHERE user_id = 123;  # → Shard для user 123
+// Эффективные queries:
+// 1. Get user
+await db.users.findOne({ user_id: 123 }); // → Shard для user 123
 
-# 2. Get user's posts
-SELECT * FROM posts WHERE user_id = 123;  # → Тот же shard
+// 2. Get user's posts
+await db.posts.find({ user_id: 123 }); // → Тот же shard
 
-# Неэффективные queries:
-# 3. Recent posts (global timeline)
-SELECT * FROM posts ORDER BY created_at DESC LIMIT 100;
-# → Нужно запросить все shards (scatter-gather)
+// Неэффективные queries:
+// 3. Recent posts (global timeline)
+await db.posts.find().sort({ created_at: -1 }).limit(100);
+// → Нужно запросить все shards (scatter-gather)
 ```
 
 **Решение для global timeline**: Отдельная таблица (не шардированная или шардированная по времени).
@@ -598,45 +611,43 @@ SELECT * FROM posts ORDER BY created_at DESC LIMIT 100;
 
 **Shard key**: `city_id` (geographic sharding)
 
-```python
-rides (sharded by city_id)
-  - ride_id
-  - city_id (shard key)
-  - user_id
-  - driver_id
-  - status
+```javascript
+const ridesByCity = {
+  shardKey: 'city_id',
+  columns: ['ride_id', 'city_id', 'user_id', 'driver_id', 'status'],
+};
 
-# Shards:
-Shard SF: San Francisco rides
-Shard NYC: New York rides
-Shard LON: London rides
+// Shards:
+// Shard SF: San Francisco rides
+// Shard NYC: New York rides
+// Shard LON: London rides
 
-# Преимущества:
-# - Queries изолированы по городу
-# - Можно scale города независимо
-# - Geo-locality (low latency)
+// Преимущества:
+// - Queries изолированы по городу
+// - Можно scale города независимо
+// - Geo-locality (low latency)
 ```
 
 ### Пример 3: Multi-tenant SaaS
 
 **Shard key**: `tenant_id` (organization)
 
-```python
-users (sharded by tenant_id)
-  - user_id
-  - tenant_id (shard key)
-  - name
+```javascript
+const usersByTenant = {
+  shardKey: 'tenant_id',
+  columns: ['user_id', 'tenant_id', 'name'],
+};
 
-documents (sharded by tenant_id)
-  - document_id
-  - tenant_id (shard key)
-  - content
+const documentsByTenant = {
+  shardKey: 'tenant_id',
+  columns: ['document_id', 'tenant_id', 'content'],
+};
 
-# Isolation: каждый tenant на своем shard (или несколько tenants на shard)
+// Isolation: каждый tenant на своем shard (или несколько tenants на shard)
 
-# Преимущества:
-# - Tenant isolation (security)
-# - Можно переместить большого tenant на dedicated shard
+// Преимущества:
+// - Tenant isolation (security)
+// - Можно переместить большого tenant на dedicated shard
 ```
 
 ## Monitoring шардирования
@@ -660,21 +671,24 @@ IF shard_imbalance > 30% → REBALANCE NEEDED
 
 ### Rebalancing
 
-```python
-# Detect imbalance
-shard_sizes = {
-    'shard_1': 1.5TB,
-    'shard_2': 0.5TB,  # Underutilized
-    'shard_3': 2.0TB,
-    'shard_4': 0.8TB,
+```javascript
+// Detect imbalance
+const shardSizes = new Map([
+  ['shard_1', 1.5],
+  ['shard_2', 0.5], // Underutilized
+  ['shard_3', 2.0],
+  ['shard_4', 0.8],
+]);
+
+const total = Array.from(shardSizes.values()).reduce((sum, size) => sum + size, 0);
+const avg = total / shardSizes.size; // 1.2TB
+const threshold = 0.3; // 30%
+
+for (const [shard, size] of shardSizes.entries()) {
+  if (Math.abs(size - avg) / avg > threshold) {
+    console.log(`Rebalance needed for ${shard}`);
+  }
 }
-
-avg = sum(shard_sizes.values()) / len(shard_sizes)  # 1.2TB
-threshold = 0.3  # 30%
-
-for shard, size in shard_sizes.items():
-    if abs(size - avg) / avg > threshold:
-        print(f"Rebalance needed for {shard}")
 ```
 
 ## Best Practices
@@ -709,34 +723,38 @@ WHERE users.id = 123;
 
 ### 3. Избегайте cross-shard operations
 
-```python
-# Bad: cross-shard transaction
-def transfer_credits(from_user, to_user, amount):
-    shard1 = get_shard(from_user)
-    shard2 = get_shard(to_user)
-    # Distributed transaction (сложно)
+```javascript
+// Bad: cross-shard transaction
+async function transferCredits(fromUser, toUser, amount) {
+  const shard1 = getShard(fromUser);
+  const shard2 = getShard(toUser);
+  // Distributed transaction (сложно)
+}
 
-# Better: credits stored globally или используйте saga pattern
+// Better: credits stored globally или используйте saga pattern
 ```
 
 ### 4. Plan for growth
 
-```python
-# Start with more shards than needed
-# Easier to merge than split
+```javascript
+// Start with more shards than needed
+// Easier to merge than split
 
-Initial: 16 shards для 1M users (overkill, но future-proof)
-Growth: 100M users → уже готовы
+const growthPlan = [
+  'Initial: 16 shards для 1M users (overkill, но future-proof)',
+  'Growth: 100M users → уже готовы',
+];
 ```
 
 ### 5. Monitoring и alerts
 
-```python
-# Track shard health
-for shard in shards:
-    monitor(shard.qps)
-    monitor(shard.disk_usage)
-    monitor(shard.error_rate)
+```javascript
+// Track shard health
+for (const shard of shards) {
+  monitor(shard.qps);
+  monitor(shard.diskUsage);
+  monitor(shard.errorRate);
+}
 ```
 
 ## Что почитать дальше

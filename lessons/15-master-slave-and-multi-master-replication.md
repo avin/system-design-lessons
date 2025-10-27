@@ -164,12 +164,12 @@ SHOW SLAVE STATUS\G
 **Решения**:
 
 1. **Read from Master для критичных данных**:
-```python
-# После write читаем из Master
-user = db.master.query("SELECT * FROM users WHERE id = 123")
+```javascript
+// После write читаем из Master
+const user = await db.master.query('SELECT * FROM users WHERE id = 123');
 
-# Обычные reads из Slave
-users = db.slave.query("SELECT * FROM users")
+// Обычные reads из Slave
+const users = await db.slave.query('SELECT * FROM users');
 ```
 
 2. **Session consistency**: Читать из того же server, куда писали (sticky sessions)
@@ -427,67 +427,77 @@ START SLAVE;
 **Стратегии routing**:
 
 1. **Round Robin**:
-```python
-replicas = [replica1, replica2, replica3]
-current = 0
+```javascript
+const replicas = [replica1, replica2, replica3];
+let current = 0;
 
-def get_replica():
-    global current
-    replica = replicas[current % len(replicas)]
-    current += 1
-    return replica
+function getReplica() {
+  const replica = replicas[current % replicas.length];
+  current += 1;
+  return replica;
+}
 ```
 
 2. **Least Connections**:
-```python
-def get_replica():
-    return min(replicas, key=lambda r: r.active_connections)
+```javascript
+function getReplica() {
+  return replicas.reduce((best, replica) =>
+    replica.activeConnections < best.activeConnections ? replica : best,
+  replicas[0]);
+}
 ```
 
 3. **Geographic routing**:
-```python
-def get_replica(user_location):
-    if user_location == 'US':
-        return us_replica
-    elif user_location == 'EU':
-        return eu_replica
+```javascript
+function getReplica(userLocation) {
+  if (userLocation === 'US') {
+    return usReplica;
+  }
+  if (userLocation === 'EU') {
+    return euReplica;
+  }
+  return defaultReplica;
+}
 ```
 
 ### Application-level routing
 
-**Django**:
-```python
-from django.db import models
+**Node.js (Sequelize)**:
+```javascript
+const { Sequelize } = require('sequelize');
 
-class DatabaseRouter:
-    def db_for_read(self, model, **hints):
-        return 'replica'  # Read from replica
+const master = new Sequelize('postgres://master.db.example.com/mydb');
+const replica = new Sequelize('postgres://replica.db.example.com/mydb');
 
-    def db_for_write(self, model, **hints):
-        return 'default'  # Write to master
+async function runQuery({ type, sql, params }) {
+  if (type === 'write') {
+    return master.query(sql, { replacements: params });
+  }
 
-DATABASES = {
-    'default': {  # Master
-        'ENGINE': 'django.db.backends.postgresql',
-        'HOST': 'master.db.example.com',
-    },
-    'replica': {  # Replica
-        'ENGINE': 'django.db.backends.postgresql',
-        'HOST': 'replica.db.example.com',
-    }
+  return replica.query(sql, { replacements: params });
 }
 ```
 
 **Manual routing**:
-```python
-# Write
-user = User.objects.using('default').create(username='john')
+```javascript
+// Write
+const user = await runQuery({
+  type: 'write',
+  sql: 'INSERT INTO users (username) VALUES (:username) RETURNING *',
+  params: { username: 'john' },
+});
 
-# Read
-users = User.objects.using('replica').filter(is_active=True)
+// Read
+const users = await runQuery({
+  type: 'read',
+  sql: 'SELECT * FROM users WHERE is_active = true',
+});
 
-# Read-your-writes: read from master after write
-user = User.objects.using('default').get(id=user.id)
+// Read-your-writes: read from master after write
+const freshUser = await master.query(
+  'SELECT * FROM users WHERE id = :id',
+  { replacements: { id: user[0][0].id } },
+);
 ```
 
 ### Proxy Solutions
@@ -512,16 +522,19 @@ max_client_conn = 1000
 ```
 
 **AWS RDS Read Replicas**:
-```python
-import boto3
+```javascript
+const { Client } = require('pg');
 
-# Endpoint routing
-MASTER_ENDPOINT = 'mydb.abc123.us-east-1.rds.amazonaws.com'
-REPLICA_ENDPOINT = 'mydb-replica.abc123.us-east-1.rds.amazonaws.com'
+// Endpoint routing
+const MASTER_ENDPOINT = 'mydb.abc123.us-east-1.rds.amazonaws.com';
+const REPLICA_ENDPOINT = 'mydb-replica.abc123.us-east-1.rds.amazonaws.com';
 
-# Application uses different connections
-master_conn = psycopg2.connect(host=MASTER_ENDPOINT)
-replica_conn = psycopg2.connect(host=REPLICA_ENDPOINT)
+// Application uses different connections
+const masterConn = new Client({ host: MASTER_ENDPOINT });
+await masterConn.connect();
+
+const replicaConn = new Client({ host: REPLICA_ENDPOINT });
+await replicaConn.connect();
 ```
 
 ## Практические рекомендации

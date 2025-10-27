@@ -501,9 +501,16 @@ service UserService {
 rpc GetUser(GetUserRequest) returns (User);
 ```
 
-```python
-# Client
-user = stub.GetUser(GetUserRequest(id=123))
+```javascript
+// Client
+client.getUser({ id: 123 }, (error, user) => {
+  if (error) {
+    console.error(error);
+    return;
+  }
+
+  console.log(user);
+});
 ```
 
 #### 2. Server Streaming
@@ -511,10 +518,14 @@ user = stub.GetUser(GetUserRequest(id=123))
 rpc ListUsers(ListUsersRequest) returns (stream User);
 ```
 
-```python
-# Client
-for user in stub.ListUsers(ListUsersRequest()):
-    print(user.name)
+```javascript
+// Client
+const stream = client.listUsers({});
+stream.on('data', (user) => {
+  console.log(user.name);
+});
+stream.on('error', (error) => console.error(error));
+stream.on('end', () => console.log('Stream completed'));
 ```
 
 #### 3. Client Streaming
@@ -522,13 +533,22 @@ for user in stub.ListUsers(ListUsersRequest()):
 rpc CreateUsers(stream CreateUserRequest) returns (Summary);
 ```
 
-```python
-# Client
-def user_generator():
-    for i in range(100):
-        yield CreateUserRequest(name=f"User {i}")
+```javascript
+// Client
+const call = client.createUsers((error, summary) => {
+  if (error) {
+    console.error(error);
+    return;
+  }
 
-summary = stub.CreateUsers(user_generator())
+  console.log(summary);
+});
+
+for (let i = 0; i < 100; i += 1) {
+  call.write({ name: `User ${i}` });
+}
+
+call.end();
 ```
 
 #### 4. Bidirectional Streaming
@@ -567,8 +587,8 @@ rpc Chat(stream Message) returns (stream Message);
 Из `.proto` файла генерируется код для разных языков:
 
 ```bash
-# Python
-protoc --python_out=. --grpc_python_out=. user.proto
+# Node.js
+npx grpc_tools_node_protoc --js_out=import_style=commonjs,binary:. --grpc_out=grpc_js:. user.proto
 
 # Go
 protoc --go_out=. --go-grpc_out=. user.proto
@@ -577,55 +597,81 @@ protoc --go_out=. --go-grpc_out=. user.proto
 protoc --java_out=. --grpc-java_out=. user.proto
 ```
 
-### Пример Server (Python)
+### Пример Server (Node.js)
 
-```python
-import grpc
-from concurrent import futures
-import user_pb2
-import user_pb2_grpc
+```javascript
+const grpc = require('@grpc/grpc-js');
+const protoLoader = require('@grpc/proto-loader');
 
-class UserService(user_pb2_grpc.UserServiceServicer):
-    def GetUser(self, request, context):
-        user = db.get_user(request.id)
-        return user_pb2.User(
-            id=user.id,
-            name=user.name,
-            email=user.email
-        )
+const packageDefinition = protoLoader.loadSync('user.proto', {
+  keepCase: true,
+  longs: String,
+  enums: String,
+  defaults: true,
+  oneofs: true,
+});
 
-    def ListUsers(self, request, context):
-        for user in db.get_all_users():
-            yield user_pb2.User(
-                id=user.id,
-                name=user.name,
-                email=user.email
-            )
+const userProto = grpc.loadPackageDefinition(packageDefinition);
 
-server = grpc.server(futures.ThreadPoolExecutor(max_workers=10))
-user_pb2_grpc.add_UserServiceServicer_to_server(UserService(), server)
-server.add_insecure_port('[::]:50051')
-server.start()
-server.wait_for_termination()
+const server = new grpc.Server();
+
+server.addService(userProto.UserService.service, {
+  getUser(call, callback) {
+    const user = db.getUser(call.request.id);
+    callback(null, {
+      id: user.id,
+      name: user.name,
+      email: user.email,
+    });
+  },
+  listUsers(call) {
+    db.getAllUsers().forEach((user) => {
+      call.write({
+        id: user.id,
+        name: user.name,
+        email: user.email,
+      });
+    });
+    call.end();
+  },
+});
+
+server.bindAsync('0.0.0.0:50051', grpc.ServerCredentials.createInsecure(), () => {
+  server.start();
+});
 ```
 
-### Пример Client (Python)
+### Пример Client (Node.js)
 
-```python
-import grpc
-import user_pb2
-import user_pb2_grpc
+```javascript
+const grpc = require('@grpc/grpc-js');
+const protoLoader = require('@grpc/proto-loader');
 
-channel = grpc.insecure_channel('localhost:50051')
-stub = user_pb2_grpc.UserServiceStub(channel)
+const packageDefinition = protoLoader.loadSync('user.proto', {
+  keepCase: true,
+  longs: String,
+  enums: String,
+  defaults: true,
+  oneofs: true,
+});
 
-# Unary call
-user = stub.GetUser(user_pb2.GetUserRequest(id=123))
-print(f"User: {user.name}")
+const userProto = grpc.loadPackageDefinition(packageDefinition);
+const client = new userProto.UserService('localhost:50051', grpc.credentials.createInsecure());
 
-# Server streaming
-for user in stub.ListUsers(user_pb2.ListUsersRequest()):
-    print(f"User: {user.name}")
+// Unary call
+client.getUser({ id: 123 }, (error, user) => {
+  if (error) {
+    console.error(error);
+    return;
+  }
+  console.log(`User: ${user.name}`);
+});
+
+// Server streaming
+const usersStream = client.listUsers({});
+usersStream.on('data', (user) => console.log(`User: ${user.name}`));
+usersStream.on('error', (error) => console.error(error));
+usersStream.on('end', () => console.log('Stream finished'));
 ```
 
 ### Преимущества gRPC

@@ -230,16 +230,19 @@ db.orders.aggregate([
 
 **Модель**: Простейшая — ключ → значение
 
-```python
-# Redis
-redis.set("user:123:name", "John Doe")
-redis.get("user:123:name")  # "John Doe"
+```javascript
+// Redis
+const Redis = require('ioredis');
+const redis = new Redis();
 
-redis.hset("user:123", mapping={
-    "name": "John Doe",
-    "email": "john@example.com"
-})
-redis.hgetall("user:123")
+await redis.set('user:123:name', 'John Doe');
+await redis.get('user:123:name'); // "John Doe"
+
+await redis.hset('user:123', {
+  name: 'John Doe',
+  email: 'john@example.com',
+});
+await redis.hgetall('user:123');
 ```
 
 **Характеристики**:

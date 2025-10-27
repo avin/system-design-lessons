@@ -517,26 +517,24 @@ upstream backend {
 ### Health Check Endpoints
 
 **Простой**:
-```python
-@app.route('/health')
-def health():
-    return 'OK', 200
+```javascript
+app.get('/health', (req, res) => {
+  res.status(200).send('OK');
+});
 ```
 
 **Детальный**:
-```python
-@app.route('/health')
-def health():
-    checks = {
-        'database': check_database(),
-        'redis': check_redis(),
-        'disk_space': check_disk_space()
-    }
+```javascript
+app.get('/health', async (req, res) => {
+  const checks = {
+    database: await checkDatabase(),
+    redis: await checkRedis(),
+    diskSpace: checkDiskSpace(),
+  };
 
-    if all(checks.values()):
-        return jsonify(checks), 200
-    else:
-        return jsonify(checks), 503
+  const isHealthy = Object.values(checks).every(Boolean);
+  res.status(isHealthy ? 200 : 503).json(checks);
+});
 ```
 
 ## Load Balancer Архитектуры

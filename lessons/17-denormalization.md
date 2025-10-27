@@ -198,13 +198,17 @@ Query: SELECT без JOIN
 - При изменении username нужно обновить все posts этого user
 
 **Update strategy**:
-```python
-def update_username(user_id, new_name):
-    # Update users table
-    db.execute("UPDATE users SET name = ? WHERE id = ?", (new_name, user_id))
+```javascript
+async function updateUsername(userId, newName) {
+  // Update users table
+  await db.execute('UPDATE users SET name = ? WHERE id = ?', [newName, userId]);
 
-    # Update denormalized data
-    db.execute("UPDATE posts SET author_name = ? WHERE user_id = ?", (new_name, user_id))
+  // Update denormalized data
+  await db.execute('UPDATE posts SET author_name = ? WHERE user_id = ?', [
+    newName,
+    userId,
+  ]);
+}
 ```
 
 ### 2. Aggregation (Агрегация)
@@ -225,13 +229,20 @@ SELECT comment_count FROM posts WHERE id = 1;
 ```
 
 **Update strategy**:
-```python
-def add_comment(post_id, text):
-    # Insert comment
-    db.execute("INSERT INTO comments (post_id, text) VALUES (?, ?)", (post_id, text))
+```javascript
+async function addComment(postId, text) {
+  // Insert comment
+  await db.execute('INSERT INTO comments (post_id, text) VALUES (?, ?)', [
+    postId,
+    text,
+  ]);
 
-    # Increment counter
-    db.execute("UPDATE posts SET comment_count = comment_count + 1 WHERE id = ?", (post_id,))
+  // Increment counter
+  await db.execute(
+    'UPDATE posts SET comment_count = comment_count + 1 WHERE id = ?',
+    [postId],
+  );
+}
 ```
 
 **Alternative**: Trigger
@@ -365,37 +376,43 @@ DO UPDATE SET
 
 **Денормализация через cache** (Redis, Memcached).
 
-```python
-def get_user_with_stats(user_id):
-    # Check cache
-    cached = redis.get(f"user:{user_id}:full")
-    if cached:
-        return json.loads(cached)
+```javascript
+async function getUserWithStats(userId) {
+  // Check cache
+  const cached = await redis.get(`user:${userId}:full`);
+  if (cached) {
+    return JSON.parse(cached);
+  }
 
-    # Cache miss: query БД (с JOINs)
-    user = db.query("""
-        SELECT users.*,
-               COUNT(posts.id) as post_count,
-               COUNT(followers.id) as follower_count
-        FROM users
-        LEFT JOIN posts ON users.id = posts.user_id
-        LEFT JOIN followers ON users.id = followers.following_id
-        WHERE users.id = ?
-        GROUP BY users.id
-    """, (user_id,))
+  // Cache miss: query БД (с JOINs)
+  const user = await db.query(
+    `
+      SELECT users.*,
+             COUNT(posts.id) AS post_count,
+             COUNT(followers.id) AS follower_count
+      FROM users
+      LEFT JOIN posts ON users.id = posts.user_id
+      LEFT JOIN followers ON users.id = followers.following_id
+      WHERE users.id = ?
+      GROUP BY users.id
+    `,
+    [userId],
+  );
 
-    # Store в cache
-    redis.setex(f"user:{user_id}:full", 3600, json.dumps(user))
-    return user
+  // Store в cache
+  await redis.setex(`user:${userId}:full`, 3600, JSON.stringify(user));
+  return user;
+}
 ```
 
 **Invalidation**:
-```python
-def update_user(user_id, data):
-    db.execute("UPDATE users SET ... WHERE id = ?", (user_id,))
+```javascript
+async function updateUser(userId, data) {
+  await db.execute('UPDATE users SET ... WHERE id = ?', [userId]);
 
-    # Invalidate cache
-    redis.delete(f"user:{user_id}:full")
+  // Invalidate cache
+  await redis.del(`user:${userId}:full`);
+}
 ```
 
 ## Управление consistency
@@ -422,28 +439,38 @@ posts.author_name = 'John Doe'  (stale!)
 
 #### 1. Transactional updates
 
-```python
-def update_username(user_id, new_name):
-    with db.transaction():
-        db.execute("UPDATE users SET name = ? WHERE id = ?", (new_name, user_id))
-        db.execute("UPDATE posts SET author_name = ? WHERE user_id = ?", (new_name, user_id))
+```javascript
+async function updateUsernameTransactional(userId, newName) {
+  await db.transaction(async (tx) => {
+    await tx.execute('UPDATE users SET name = ? WHERE id = ?', [newName, userId]);
+    await tx.execute('UPDATE posts SET author_name = ? WHERE user_id = ?', [
+      newName,
+      userId,
+    ]);
+  });
+}
 ```
 
 **Проблема**: Может быть медленным если много posts.
 
 #### 2. Background jobs
 
-```python
-def update_username(user_id, new_name):
-    # Update users table (fast)
-    db.execute("UPDATE users SET name = ? WHERE id = ?", (new_name, user_id))
+```javascript
+async function updateUsernameAsync(userId, newName) {
+  // Update users table (fast)
+  await db.execute('UPDATE users SET name = ? WHERE id = ?', [newName, userId]);
 
-    # Queue background job
-    queue.enqueue('update_denormalized_username', user_id, new_name)
+  // Queue background job
+  await queue.enqueue('updateDenormalizedUsername', { userId, newName });
+}
 
-# Worker
-def update_denormalized_username(user_id, new_name):
-    db.execute("UPDATE posts SET author_name = ? WHERE user_id = ?", (new_name, user_id))
+// Worker
+async function updateDenormalizedUsername({ userId, newName }) {
+  await db.execute('UPDATE posts SET author_name = ? WHERE user_id = ?', [
+    newName,
+    userId,
+  ]);
+}
 ```
 
 **Trade-off**: Eventual consistency (короткий период inconsistency).
@@ -469,27 +496,30 @@ END;
 
 Для некритичных данных accept short-term inconsistency.
 
-```python
-# Author name обновится eventually (background job)
-# В течение нескольких минут может быть stale
-# Для большинства приложений — приемлемо
+```javascript
+// Author name обновится eventually (background job)
+// В течение нескольких минут может быть stale
+// Для большинства приложений — приемлемо
 ```
 
 #### 5. Read-time resolution
 
 Вместо хранения денормализованных данных, compute при чтении.
 
-```python
-# Не храним author_name в posts
-# При чтении JOIN или lookup
-def get_post(post_id):
-    post = db.query("SELECT * FROM posts WHERE id = ?", (post_id,))
-    author = db.query("SELECT name FROM users WHERE id = ?", (post.user_id,))
-    post['author_name'] = author['name']
-    return post
+```javascript
+// Не храним author_name в posts
+// При чтении JOIN или lookup
+async function getPost(postId) {
+  const [post] = await db.query('SELECT * FROM posts WHERE id = ?', [postId]);
+  const [author] = await db.query('SELECT name FROM users WHERE id = ?', [
+    post.user_id,
+  ]);
+  post.author_name = author.name;
+  return post;
+}
 
-# Кэшируем результат
-cache.set(f"post:{post_id}", post, ttl=300)
+// Кэшируем результат
+await cache.set(`post:${postId}`, post, { ttl: 300 });
 ```
 
 ## Примеры из практики
@@ -512,19 +542,25 @@ LIMIT 20;
 ```
 
 **Денормализованная** (fan-out on write):
-```python
-# При создании поста:
-def create_post(user_id, content):
-    post = db.insert_post(user_id, content)
+```javascript
+// При создании поста:
+async function createPost(userId, content) {
+  const post = await db.insertPost(userId, content);
 
-    # Fan-out: insert в timeline каждого follower
-    followers = db.get_followers(user_id)
-    for follower_id in followers:
-        db.insert_timeline(follower_id, post.id)
+  // Fan-out: insert в timeline каждого follower
+  const followers = await db.getFollowers(userId);
+  for (const followerId of followers) {
+    await db.insertTimeline(followerId, post.id);
+  }
+}
 
-# Чтение timeline (fast):
-def get_timeline(user_id):
-    return db.query("SELECT * FROM timeline WHERE user_id = ? ORDER BY created_at DESC LIMIT 20", (user_id,))
+// Чтение timeline (fast):
+async function getTimeline(userId) {
+  return db.query(
+    'SELECT * FROM timeline WHERE user_id = ? ORDER BY created_at DESC LIMIT 20',
+    [userId],
+  );
+}
 ```
 
 **Hybrid approach** (Twitter):
@@ -611,43 +647,47 @@ comments: [
 
 ### 2. Документируйте денормализацию
 
-```python
-# models.py
-class Post(models.Model):
-    user_id = models.ForeignKey(User)
-    author_name = models.CharField()  # DENORMALIZED from users.name
-    comment_count = models.IntegerField()  # DENORMALIZED count from comments
+```javascript
+// models/post.js
+const PostSchema = {
+  userId: { ref: 'users.id' },
+  authorName: { type: 'string', denormalizedFrom: 'users.name' },
+  commentCount: { type: 'number', denormalizedFrom: 'comments' },
+};
 
-# Документируйте update logic
-# When updating User.name:
-# 1. Update users table
-# 2. Update posts.author_name (background job)
+// Документируйте update logic
+// When updating User.name:
+// 1. Update users table
+// 2. Update posts.author_name (background job)
 ```
 
 ### 3. Автоматизируйте updates
 
-```python
-# Используйте ORM signals, triggers, или CDC (Change Data Capture)
-@receiver(post_save, sender=User)
-def update_denormalized_username(sender, instance, **kwargs):
-    if 'name' in instance.changed_fields:
-        update_posts_author_name.delay(instance.id, instance.name)
+```javascript
+// Используйте ORM hooks, triggers, или CDC (Change Data Capture)
+userModel.on('afterSave', async (user, changedFields) => {
+  if (changedFields.has('name')) {
+    await updatePostsAuthorNameQueue.add({ userId: user.id, name: user.name });
+  }
+});
 ```
 
 ### 4. Мониторьте consistency
 
-```python
-# Периодически проверяйте consistency
-def check_author_name_consistency():
-    inconsistent = db.query("""
-        SELECT posts.id, posts.author_name, users.name
-        FROM posts
-        JOIN users ON posts.user_id = users.id
-        WHERE posts.author_name != users.name
-    """)
+```javascript
+// Периодически проверяйте consistency
+async function checkAuthorNameConsistency() {
+  const inconsistent = await db.query(`
+    SELECT posts.id, posts.author_name, users.name
+    FROM posts
+    JOIN users ON posts.user_id = users.id
+    WHERE posts.author_name != users.name
+  `);
 
-    if inconsistent:
-        alert("Denormalized data inconsistency detected", inconsistent)
+  if (inconsistent.length > 0) {
+    alert('Denormalized data inconsistency detected', inconsistent);
+  }
+}
 ```
 
 ### 5. Используйте версионирование
@@ -681,11 +721,13 @@ CREATE INDEX idx_posts_user_created ON posts(user_id, created_at DESC);
 
 ### 2. Caching
 
-```python
-# Cache результаты queries вместо денормализации
-@cache(ttl=300)
-def get_post_with_author(post_id):
-    return db.query("SELECT posts.*, users.name FROM posts JOIN users ...")
+```javascript
+// Cache результаты queries вместо денормализации
+const getPostWithAuthor = cache.wrap(
+  'postWithAuthor',
+  async (postId) => db.query('SELECT posts.*, users.name FROM posts JOIN users ...', [postId]),
+  { ttl: 300 },
+);
 ```
 
 ### 3. Materialized views
