@@ -1020,12 +1020,6 @@ Distributed Transactions — сложная проблема с trade-offs:
 
 В большинстве случаев Saga предпочтительнее 2PC.
 
-## Что читать дальше?
-
-- [Урок 33: Репликация данных](33-data-replication.md)
-- [Урок 34: Eventual Consistency](34-eventual-consistency.md)
-- [Урок 27: Event-Driven Architecture](27-event-driven-architecture.md)
-
 ## Проверь себя
 
 1. В чём разница между 2PC и Saga?

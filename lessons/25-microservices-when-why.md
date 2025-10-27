@@ -953,12 +953,6 @@ spec:
 **Правило:**
 Начинайте с монолита. Переходите к микросервисам когда **боль от монолита** превышает **сложность микросервисов**.
 
-## Что читать дальше?
-
-- [Урок 26: Service Mesh](26-service-mesh.md)
-- [Урок 27: Event-Driven Architecture](27-event-driven-architecture.md)
-- [Урок 22: Kafka и Event Streaming](22-kafka-event-streaming.md)
-
 ## Проверь себя
 
 1. В чём основные отличия монолита от микросервисов?

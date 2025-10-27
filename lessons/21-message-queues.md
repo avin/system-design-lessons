@@ -1111,12 +1111,6 @@ Message Queues — это фундамент асинхронной архите
 
 Выбор зависит от требований к маршрутизации, инфраструктуре и бюджету.
 
-## Что читать дальше?
-
-- [Урок 22: Kafka и Event Streaming](22-kafka-event-streaming.md)
-- [Урок 23: Async Workers: Celery, BullMQ](23-async-workers.md)
-- [Урок 8: API Design](08-api-design-rest-graphql-grpc.md)
-
 ## Проверь себя
 
 1. В чём разница между At-least-once и Exactly-once delivery?

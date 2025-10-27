@@ -884,12 +884,6 @@ const data = await follower.read(key);
 
 Выбор стратегии репликации зависит от требований к consistency, availability и performance.
 
-## Что читать дальше?
-
-- [Урок 34: Eventual Consistency](34-eventual-consistency.md)
-- [Урок 15: Репликация: Master-Slave, Master-Master](15-replikaciya-master-slave-master-master.md)
-- [Урок 31: Consensus алгоритмы](31-consensus-algorithms.md)
-
 ## Проверь себя
 
 1. В чём разница между синхронной и асинхронной репликацией?

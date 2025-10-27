@@ -954,12 +954,6 @@ Service Mesh автоматизирует сложные аспекты микр
 
 Service Mesh — не обязательный компонент, но при росте числа микросервисов значительно упрощает операционную работу.
 
-## Что читать дальше?
-
-- [Урок 27: Event-Driven Architecture](27-event-driven-architecture.md)
-- [Урок 25: Микросервисы: когда и зачем](25-microservices-when-why.md)
-- [Урок 10: Load Balancing](10-load-balancing-algoritmy-l4-vs-l7.md)
-
 ## Проверь себя
 
 1. Что такое Service Mesh и какие проблемы он решает?

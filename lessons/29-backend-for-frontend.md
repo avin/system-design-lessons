@@ -850,12 +850,6 @@ Backend for Frontend (BFF) — мощный паттерн для оптимиз
 
 BFF особенно эффективен в комбинации с API Gateway и микросервисами.
 
-## Что читать дальше?
-
-- [Урок 30: Service Discovery](30-service-discovery.md)
-- [Урок 28: API Gateway паттерны](28-api-gateway-patterns.md)
-- [Урок 25: Микросервисы: когда и зачем](25-microservices-when-why.md)
-
 ## Проверь себя
 
 1. Что такое BFF и какую проблему он решает?

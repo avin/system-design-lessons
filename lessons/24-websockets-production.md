@@ -1111,12 +1111,6 @@ Production-ready WebSocket система требует учёта множес
 
 Socket.IO предоставляет готовые решения для большинства проблем, что делает его отличным выбором для production.
 
-## Что читать дальше?
-
-- [Урок 25: Микросервисы: когда и зачем](25-microservices-when-why.md)
-- [Урок 9: WebSockets, SSE, Long Polling](09-websockets-sse-long-polling.md)
-- [Урок 12: Rate Limiting](12-rate-limiting-algoritmy.md)
-
 ## Проверь себя
 
 1. Почему нужны sticky sessions для WebSocket?

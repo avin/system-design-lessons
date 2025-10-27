@@ -881,12 +881,6 @@ Consensus алгоритмы — основа отказоустойчивых �
 
 Consensus обеспечивает consistency и fault tolerance, но жертвует availability при network partition (CAP).
 
-## Что читать дальше?
-
-- [Урок 32: Distributed Transactions](32-distributed-transactions.md)
-- [Урок 33: Репликация данных](33-data-replication.md)
-- [Урок 5: CAP теорема, ACID vs BASE](05-cap-teorema-acid-vs-base.md)
-
 ## Проверь себя
 
 1. Что такое consensus и зачем он нужен?

@@ -1046,12 +1046,6 @@ Eventual Consistency — powerful model для высоко доступных �
 
 Eventual Consistency позволяет строить highly available системы, но требует careful design для handling conflicts и stale data.
 
-## Что читать дальше?
-
-- [Урок 35: Дизайн URL Shortener](35-design-url-shortener.md)
-- [Урок 5: CAP теорема, ACID vs BASE](05-cap-teorema-acid-vs-base.md)
-- [Урок 33: Репликация данных](33-data-replication.md)
-
 ## Проверь себя
 
 1. Что такое Eventual Consistency?

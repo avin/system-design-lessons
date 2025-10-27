@@ -943,12 +943,6 @@ Pastebin — система для хранения и обмена тексто
 - Efficient storage (deduplication)
 - Clean expired paste (cron + lazy)
 
-## Что читать дальше?
-
-- [Урок 37: Rate Limiter как система](37-rate-limiter-kak-sistema.md)
-- [Урок 38: Распределённое хранилище ключ-значение](38-distributed-key-value-store.md)
-- [Урок 18: Blob Storage и CDN](18-blob-storage-i-cdn.md)
-
 ## Проверь себя
 
 1. Когда хранить content в DB, а когда в Blob Storage?

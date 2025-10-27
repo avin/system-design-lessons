@@ -891,12 +891,6 @@ Service Discovery — критический компонент микросер
 
 Service Discovery упрощает управление динамической инфраструктурой и делает систему более resilient.
 
-## Что читать дальше?
-
-- [Урок 31: Consensus алгоритмы](31-consensus-algorithms.md)
-- [Урок 26: Service Mesh](26-service-mesh.md)
-- [Урок 28: API Gateway паттерны](28-api-gateway-patterns.md)
-
 ## Проверь себя
 
 1. В чём разница между Client-Side и Server-Side discovery?

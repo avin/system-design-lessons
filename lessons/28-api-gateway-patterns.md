@@ -896,12 +896,6 @@ API Gateway — критический компонент микросервис
 
 API Gateway упрощает клиентскую разработку и централизует cross-cutting concerns.
 
-## Что читать дальше?
-
-- [Урок 29: Backend for Frontend (BFF)](29-backend-for-frontend.md)
-- [Урок 30: Service Discovery](30-service-discovery.md)
-- [Урок 11: API Gateway и Reverse Proxy](11-api-gateway-i-reverse-proxy.md)
-
 ## Проверь себя
 
 1. Какие основные функции выполняет API Gateway?

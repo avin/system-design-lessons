@@ -809,12 +809,6 @@ URL Shortener — отличный пример для изучения:
 - Collision-free ID generation
 - Analytics без влияния на redirect performance
 
-## Что читать дальше?
-
-- [Урок 36: Pastebin](36-pastebin.md)
-- [Урок 39: Генератор уникальных идентификаторов](39-unique-id-generator.md)
-- [Урок 19: Кэширование: стратегии](19-keshirovanie-strategii.md)
-
 ## Проверь себя
 
 1. Как генерировать уникальные short codes?
