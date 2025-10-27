@@ -1,488 +1,100 @@
-# Урок 23: Async Workers — Celery, BullMQ
-
+# Урок 23: Async Workers
 
 ## Введение
 
-Async Workers (асинхронные воркеры) — это паттерн для выполнения фоновых задач вне основного потока обработки запросов. Они позволяют веб-приложению быстро отвечать пользователю, делегируя долгие операции в фон.
+Асинхронные воркеры позволяют выносить длительные или ресурсозатратные операции из основного веб-потока. Вместо того чтобы блокировать ответ пользователю, мы отправляем задачу в очередь и обрабатываем её отдельно. Такой подход улучшает латентность, повышает надёжность и упрощает масштабирование.
 
-**Зачем нужны воркеры?**
+В этом уроке мы разберём:
 
-Без воркеров:
+- чем фоновые воркеры отличаются от синхронной обработки;
+- базовую архитектуру очередей задач;
+- инструменты из экосистемы Node.js (BullMQ, Agenda, Bree, Worker Threads);
+- надёжность: повторные попытки, идемпотентность, Dead Letter Queue;
+- наблюдаемость и планирование ресурсов;
+- практический пример обработки заказов в e-commerce.
+
+## Когда нужны воркеры?
+
+### Синхронный сценарий
+
 ```javascript
+// Синхронная обработка — весь pipeline внутри HTTP-обработчика
 app.post('/signup', async (req, res) => {
   const { email, password } = req.body;
-  const user = await createUser(email, password); // 50ms
-  await sendWelcomeEmail(email); // 2000ms ❌
-  await generateThumbnail(user.avatar); // 500ms ❌
-  await updateAnalytics(user); // 300ms ❌
-  await notifyCrm(user); // 400ms ❌
-  res.json({ userId: user.id }); // Total: 3250ms
+
+  const user = await createUser(email, password);           // 50 ms
+  await sendWelcomeEmail(email);                            // 2 000 ms
+  await generateAvatarThumbnail(user.avatarUrl);            // 500 ms
+  await pushToCrm(user);                                    // 400 ms
+  await updateAnalytics(user);                              // 300 ms
+
+  res.json({ id: user.id });                                // ~3.3 секунды
 });
 ```
 
-С воркерами:
-```javascript
-app.post('/signup', async (req, res) => {
-  const { email, password } = req.body;
-  const user = await createUser(email, password); // 50ms
-  await emailQueue.add('send-welcome', { email }); // 5ms (в очередь)
-  await imageQueue.add('generate-thumbnail', { avatar: user.avatar }); // 5ms
-  await analyticsQueue.add('update-analytics', { user }); // 5ms
-  await crmQueue.add('notify-crm', { user }); // 5ms
-  res.json({ userId: user.id }); // Total: 70ms ✅
-});
-```
+Главные проблемы:
 
-**Основные use cases:**
-- Email рассылка
-- Обработка изображений/видео
-- Генерация отчётов
-- Парсинг данных
-- Интеграции с внешними API
-- Scheduled tasks (cron jobs)
+- клиент ждёт завершения всех операций;
+- одна из долгих функций может сорвать весь запрос;
+- горизонтальное масштабирование ограничено, потому что каждый веб-инстанс тратит много времени на фоновые действия.
 
-## Celery (Python)
-
-Celery — популярный фреймворк для распределённой обработки задач в Python.
-
-### Архитектура Celery
-
-```
-Client (Web App) → Broker (Redis/RabbitMQ) → Worker → Result Backend
-                         ↓
-                     [Task Queue]
-                         ↓
-                   Worker Pool (processes/threads)
-```
-
-**Компоненты:**
-- **Client**: отправляет задачи
-- **Broker**: очередь задач (Redis, RabbitMQ, SQS)
-- **Worker**: выполняет задачи
-- **Result Backend**: хранит результаты (Redis, Database)
-
-### Установка и настройка
-
-```bash
-pip install celery redis
-```
+### Асинхронный сценарий
 
 ```javascript
-// queues.js
 const { Queue } = require('bullmq');
+const signupQueue = new Queue('signup', { connection: { host: '127.0.0.1', port: 6379 } });
 
-const connection = {
-  host: '127.0.0.1',
-  port: 6379,
-};
+app.post('/signup', async (req, res) => {
+  const { email, password } = req.body;
 
-const emailQueue = new Queue('emails', {
-  connection,
-  defaultJobOptions: {
-    removeOnComplete: true,
-    attempts: 5,
-    backoff: { type: 'exponential', delay: 2000 },
-    timeout: 300_000,
-  },
-});
+  const user = await createUser(email, password); // 50 ms
 
-const imageQueue = new Queue('image-processing', {
-  connection,
-  defaultJobOptions: {
-    removeOnComplete: true,
-    timeout: 600_000,
-  },
-});
+  await signupQueue.add('welcome-email', { email });
+  await signupQueue.add('generate-thumbnail', { avatarUrl: user.avatarUrl });
+  await signupQueue.add('notify-crm', { userId: user.id });
+  await signupQueue.add('analytics', { userId: user.id });
 
-const analyticsQueue = new Queue('analytics', { connection });
-const crmQueue = new Queue('crm', { connection });
-
-module.exports = {
-  connection,
-  emailQueue,
-  imageQueue,
-  analyticsQueue,
-  crmQueue,
-};
-```
-
-### Базовая задача
-
-```javascript
-// workers/email-worker.js
-const { Worker } = require('bullmq');
-const { emailQueue, connection } = require('../queues');
-
-const emailWorker = new Worker(
-  emailQueue.name,
-  async (job) => {
-    const { to, subject, body } = job.data;
-    console.log(`Sending email to ${to}...`);
-    await sendEmail(to, subject, body);
-    console.log(`Email sent to ${to}`);
-    return { to };
-  },
-  { connection },
-);
-
-module.exports = { emailWorker };
-```
-
-### Запуск воркера
-
-```bash
-# Один воркер с concurrency = 4
-CONCURRENCY=4 node workers/email-worker.js
-
-# Autoscale можно реализовать через кластер/оркестратор (PM2, Kubernetes HPA)
-# Пример: запуск 2–10 воркеров в Kubernetes Deployment
-
-# Высокая I/O-нагрузка — увеличиваем concurrency
-CONCURRENCY=100 node workers/email-worker.js
-```
-
-### Вызов задач
-
-```javascript
-// Асинхронный вызов
-const job = await emailQueue.add('send-welcome', {
-  to: 'user@example.com',
-  subject: 'Welcome',
-  body: 'Hello!',
-});
-
-// Альтернативный синтаксис с отложенным стартом
-const delayedJob = await emailQueue.add(
-  'send-welcome',
-  { to: 'user@example.com', subject: 'Welcome', body: 'Hello!' },
-  { delay: 10_000 }, // Выполнить через 10 секунд
-);
-
-// Получение статуса
-console.log(delayedJob.id); // Task ID
-console.log(await delayedJob.getState()); // waiting, active, completed, failed
-console.log(await delayedJob.isCompleted());
-console.log(await delayedJob.isFailed());
-```
-
-### Task Options
-
-```javascript
-const imageWorker = new Worker(
-  imageQueue.name,
-  async (job) => {
-    const { imageUrl } = job.data;
-    return processImage(imageUrl);
-  },
-  {
-    connection,
-    concurrency: 5,
-    limiter: {
-      max: 10, // 10 задач в минуту
-      duration: 60_000,
-    },
-  },
-);
-
-await imageQueue.add(
-  'process-image',
-  { imageUrl },
-  {
-    attempts: 3,
-    backoff: { type: 'exponential', delay: 60_000 },
-    timeout: 300_000, // Hard limit
-    jobId: `process-image:${imageUrl}`,
-    removeOnComplete: true,
-  },
-);
-```
-
-### Retry механизм
-
-```javascript
-class NonRetryableError extends Error {}
-
-const fetchWorker = new Worker(
-  'fetch-data',
-  async (job) => {
-    const { url } = job.data;
-
-    try {
-      const response = await fetch(url, { timeout: 10_000 });
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}`);
-      }
-
-      return response.json();
-    } catch (error) {
-      if (error instanceof SyntaxError) {
-        // Не retryable ошибка → не переочередь
-        await job.discard();
-        throw new NonRetryableError('Invalid JSON response');
-      }
-
-      throw error; // BullMQ выполнит повтор с backoff
-    }
-  },
-  {
-    connection,
-    settings: {
-      backoffStrategies: {
-        exponential: (attempts) => Math.min(2 ** attempts * 1000, 16_000),
-      },
-    },
-  },
-);
-
-await fetchQueue.add(
-  'fetch-data',
-  { url: 'https://api.example.com/data' },
-  {
-    attempts: 5,
-    backoff: { type: 'exponential' },
-  },
-);
-```
-
-### Chains и Workflows
-
-```javascript
-const { FlowProducer } = require('bullmq');
-const flow = new FlowProducer({ connection });
-
-// Chain: последовательное выполнение
-await flow.add({
-  name: 'download-image',
-  queueName: imageQueue.name,
-  data: { url: 'http://example.com/image.jpg' },
-  children: [
-    {
-      name: 'resize-image',
-      queueName: imageQueue.name,
-      data: { width: 800, height: 600 },
-      children: [
-        {
-          name: 'upload-to-s3',
-          queueName: imageQueue.name,
-          data: { bucket: 'bucket-name' },
-        },
-      ],
-    },
-  ],
-});
-
-// Group: параллельное выполнение
-await Promise.all([
-  emailQueue.add('send-email', { to: 'user1@example.com' }),
-  emailQueue.add('send-email', { to: 'user2@example.com' }),
-  emailQueue.add('send-email', { to: 'user3@example.com' }),
-]);
-
-// Chord: group + callback (используем FlowProducer)
-const items = [1, 2, 3, 4, 5];
-await flow.add({
-  name: 'aggregate-results',
-  queueName: analyticsQueue.name,
-  data: {},
-  children: items.map((itemId) => ({
-    name: 'process-item',
-    queueName: analyticsQueue.name,
-    data: { itemId },
-  })),
+  res.json({ id: user.id }); // ~70 ms
 });
 ```
 
-### Пример: Batch Processing
+Всё, что не нужно делать моментально, уходит в очередь. Рабочие (workers) обрабатывают задания независимо, можно настраивать количество воркеров, изолировать ошибки, масштабировать по нагрузке.
 
-```javascript
-const batchWorker = new Worker(
-  analyticsQueue.name,
-  async (job) => {
-    if (job.name === 'process-item') {
-      const item = await db.get(job.data.itemId);
-      const result = await expensiveComputation(item);
-      await db.save(result);
-      return result;
-    }
+## Архитектура асинхронной обработки
 
-    if (job.name === 'aggregate-results') {
-      const { childrenValues } = job;
-      const total = childrenValues.reduce((sum, value) => sum + value, 0);
-      await sendNotification(`Batch completed. Total: ${total}`);
-      return total;
-    }
-
-    throw new Error(`Unknown job ${job.name}`);
-  },
-  { connection },
-);
-
-const items = Array.from({ length: 10 }, (_, i) => i + 1);
-await flow.add({
-  name: 'aggregate-results',
-  queueName: analyticsQueue.name,
-  data: {},
-  children: items.map((itemId) => ({
-    name: 'process-item',
-    queueName: analyticsQueue.name,
-    data: { itemId },
-  })),
-});
+```
+HTTP/API → Очередь задач → Воркеры → Внешние сервисы
+            ↑ кеш/база    ↑ DLQ
 ```
 
-### Periodic Tasks (Celery Beat)
+Компоненты:
 
-```javascript
-await emailQueue.add(
-  'send-daily-report',
-  {},
-  {
-    repeat: { cron: '0 9 * * *' }, // Каждый день в 9:00
-  },
-);
+- **Producer** — создаёт задачу (чаще всего веб-сервис);
+- **Broker** — хранит очередь (Redis, RabbitMQ, Kafka, SQS, NATS);
+- **Worker** — читает задачи из очереди, выполняет логику, сообщает результат;
+- **Result storage** (опционально) — складывает результат выполнения;
+- **Dead Letter Queue** (DLQ) — отдельная очередь для задач, которые не удалось обработать.
 
-await analyticsQueue.add(
-  'cleanup-old-sessions',
-  {},
-  {
-    repeat: { cron: '0 2 * * *' }, // Каждый день в 2:00
-  },
-);
+## Выбор брокера и инструментов
 
-await analyticsQueue.add(
-  'update-cache',
-  {},
-  {
-    repeat: { every: 300_000 }, // Каждые 5 минут
-  },
-);
+| Broker / инструмент | Плюсы | Минусы | Подходит когда |
+|---------------------|-------|--------|----------------|
+| **Redis + BullMQ** | Простой запуск, высокая скорость, хорошая экосистема | Телеметрия/кластеризация нужно добавлять вручную | Веб-приложения, микросервисы, когда важна скорость внедрения |
+| **RabbitMQ (AMQP)** | Богатая маршрутизация, подтверждения, TTL, DLX | Сложнее поддерживать, нужна эксплуатация | Микросервисы, сложные топологии, on-prem |
+| **Kafka** | Масштабирование, репликация, ретензия | Более тяжёлый, нужен кластер | Event sourcing, потоковые события |
+| **SQS / Cloud Tasks** | Managed-сервис, нет эксплуатации | Лимиты AWS, доп. стоимость | Серверлесс, API без инфраструктуры брокера |
 
-await emailQueue.add(
-  'send-reminder',
-  {},
-  {
-    repeat: { cron: '0 10 * * 1-5' }, // Пн-Пт в 10:00
-  },
-);
-```
+Node.js-библиотеки:
 
-```bash
-# Повторяющиеся задачи требуют QueueScheduler
-node schedulers/queue-scheduler.js
-```
+- **BullMQ** — де-факто стандарт для Redis (поддерживает flows, повторения, приоритеты);
+- **Agenda** (MongoDB) — фокус на планировщике задач;
+- **Bree** — cron/JS jobs, lightweight;
+- **Worker Threads** — для CPU-задач в рамках одного процесса;
+- **Custom + AMQP/Kafka** — когда нужен собственный протокол/формат.
 
-### Мониторинг: Flower
+В этом уроке сосредоточимся на BullMQ, как наиболее распространённом решении.
 
-```bash
-npm install -g bull-board
-
-# Запуск веб-интерфейса
-npx bull-board --queue "redis://127.0.0.1:6379#emails"
-```
-
-Откройте `http://localhost:3000`:
-- Активные воркеры
-- Статистика задач
-- История выполнения
-- Графики производительности
-
-### Пример: Image Processing Service
-
-```javascript
-// workers/image-pipeline.js
-const { Worker } = require('bullmq');
-const fetch = require('node-fetch');
-const sharp = require('sharp');
-const { S3Client, PutObjectCommand } = require('@aws-sdk/client-s3');
-const { imageQueue, connection } = require('../queues');
-
-const s3 = new S3Client({ region: 'us-east-1' });
-
-const imagePipelineWorker = new Worker(
-  imageQueue.name,
-  async (job) => {
-    const { imageUrl, userId } = job.data;
-
-    // 1. Download
-    const response = await fetch(imageUrl, { timeout: 30_000 });
-    const buffer = Buffer.from(await response.arrayBuffer());
-
-    const sizes = [
-      { width: 800, height: 600 },
-      { width: 400, height: 300 },
-      { width: 200, height: 150 },
-    ];
-
-    const results = [];
-
-    for (const { width, height } of sizes) {
-      // 2. Resize
-      const resized = await sharp(buffer).resize(width, height).jpeg().toBuffer();
-
-      const key = `users/${userId}/images/${width}x${height}.jpg`;
-
-      // 3. Upload to S3
-      await s3.send(
-        new PutObjectCommand({
-          Bucket: 'my-bucket',
-          Key: key,
-          Body: resized,
-          ContentType: 'image/jpeg',
-        }),
-      );
-
-      results.push({ size: `${width}x${height}`, url: `https://my-bucket.s3.amazonaws.com/${key}` });
-    }
-
-    // 4. Update database
-    await db.updateUserImages(userId, results);
-
-    return { userId, images: results };
-  },
-  {
-    connection,
-    attempts: 3,
-    backoff: { type: 'fixed', delay: 60_000 },
-  },
-);
-
-// Web API
-app.post('/upload', async (req, res) => {
-  const { imageUrl, userId } = req.body;
-  const job = await imageQueue.add('image-pipeline', { imageUrl, userId });
-  res.json({ jobId: job.id, status: 'processing' });
-});
-
-app.get('/status/:jobId', async (req, res) => {
-  const job = await imageQueue.getJob(req.params.jobId);
-  if (!job) {
-    return res.status(404).json({ error: 'Job not found' });
-  }
-
-  const state = await job.getState();
-  const result = state === 'completed' ? await job.returnvalue : null;
-  res.json({ jobId: job.id, status: state, result });
-});
-```
-
-### Priority Queues
-
-```javascript
-await emailQueue.add('critical-task', { payload }, { priority: 1 }); // highest priority
-await emailQueue.add('normal-task', { payload }, { priority: 5 });
-await emailQueue.add('low-task', { payload }, { priority: 10 });
-
-// Worker будет обрабатывать задачи в порядке приоритета
-const priorityWorker = new Worker(
-  emailQueue.name,
-  async (job) => handleTask(job),
-  { connection, concurrency: 10 },
-);
-```
-
-## BullMQ (Node.js)
-
-BullMQ — мощная библиотека для работы с очередями задач в Node.js (на базе Redis).
+## BullMQ: базовые элементы
 
 ### Установка
 
@@ -490,507 +102,365 @@ BullMQ — мощная библиотека для работы с очеред
 npm install bullmq ioredis
 ```
 
-### Базовая очередь
+### Очередь задач
 
 ```javascript
-// queue.js
 const { Queue } = require('bullmq');
 
+const connection = { host: '127.0.0.1', port: 6379 };
 const emailQueue = new Queue('emails', {
-  connection: {
-    host: 'localhost',
-    port: 6379,
-  }
-});
-
-module.exports = { emailQueue };
-```
-
-### Добавление задач
-
-```javascript
-// producer.js
-const { emailQueue } = require('./queue');
-
-async function sendWelcomeEmail(userId, email) {
-  await emailQueue.add('welcome-email', {
-    userId,
-    email,
-    timestamp: Date.now()
-  }, {
-    attempts: 3,
-    backoff: {
-      type: 'exponential',
-      delay: 2000,
-    },
-    removeOnComplete: 100,  // Хранить только 100 завершённых
-    removeOnFail: 1000,
-  });
-
-  console.log(`Email job added for ${email}`);
-}
-
-// Отложенная отправка
-await emailQueue.add('reminder', { userId: 123 }, {
-  delay: 3600000,  // Через 1 час
-});
-
-// Повторяющаяся задача
-await emailQueue.add('daily-digest', {}, {
-  repeat: {
-    pattern: '0 9 * * *',  // Каждый день в 9:00 (cron)
+  connection,
+  defaultJobOptions: {
+    removeOnComplete: { age: 3600, count: 1000 },
+    attempts: 5,
+    backoff: { type: 'exponential', delay: 2000 },
+    timeout: 30_000,
   },
 });
 ```
 
-### Worker
+### Воркеры
 
 ```javascript
-// worker.js
 const { Worker } = require('bullmq');
-const nodemailer = require('nodemailer');
 
-const emailWorker = new Worker('emails', async (job) => {
-  const { userId, email, timestamp } = job.data;
-
-  console.log(`Processing job ${job.id} for ${email}`);
-
-  // Имитация отправки email
-  await sendEmail(email, 'Welcome!', 'Thanks for signing up');
-
-  // Progress reporting
-  await job.updateProgress(50);
-
-  await new Promise(resolve => setTimeout(resolve, 1000));
-
-  await job.updateProgress(100);
-
-  return { sent: true, email, sentAt: new Date() };
-}, {
-  connection: {
-    host: 'localhost',
-    port: 6379,
+const emailWorker = new Worker(
+  'emails',
+  async (job) => {
+    const { to, subject, body } = job.data;
+    await sendEmail({ to, subject, body });
+    return { deliveredAt: Date.now() };
   },
-  concurrency: 5,  // Обрабатывать 5 задач параллельно
-  limiter: {
-    max: 10,  // Максимум 10 задач
-    duration: 1000,  // за 1 секунду
-  },
-});
+  { connection, concurrency: 10 },
+);
 
 emailWorker.on('completed', (job, result) => {
-  console.log(`Job ${job.id} completed:`, result);
+  console.log(`Email to ${job.data.to} delivered`, result);
 });
 
 emailWorker.on('failed', (job, err) => {
-  console.error(`Job ${job.id} failed:`, err.message);
-});
-
-emailWorker.on('progress', (job, progress) => {
-  console.log(`Job ${job.id} progress: ${progress}%`);
-});
-
-async function sendEmail(to, subject, text) {
-  // Реальная отправка через SMTP
-  const transporter = nodemailer.createTransport({
-    host: 'smtp.example.com',
-    port: 587,
-    auth: { user: 'user', pass: 'pass' }
-  });
-
-  await transporter.sendMail({ from: 'noreply@example.com', to, subject, text });
-}
-```
-
-### Приоритеты
-
-```javascript
-// Высокий приоритет (меньшее число = выше приоритет)
-await emailQueue.add('urgent-email', { email: 'ceo@example.com' }, {
-  priority: 1,
-});
-
-// Обычный приоритет
-await emailQueue.add('normal-email', { email: 'user@example.com' }, {
-  priority: 10,
-});
-
-// Низкий приоритет
-await emailQueue.add('newsletter', { email: 'subscriber@example.com' }, {
-  priority: 100,
+  console.error(`Failed to deliver email to ${job.data.to}`, err);
 });
 ```
 
-### Job Events и прогресс
+### Пакетная загрузка работ
 
 ```javascript
-const { Queue } = require('bullmq');
-
-const queue = new Queue('video-processing');
-
-async function processVideo(videoId) {
-  const job = await queue.add('process', { videoId });
-
-  // Слушаем события конкретной задачи
-  job.waitUntilFinished().then((result) => {
-    console.log('Video processed:', result);
-  }).catch((err) => {
-    console.error('Processing failed:', err);
-  });
-
-  return job.id;
-}
-
-// Worker с reporting прогресса
-const worker = new Worker('video-processing', async (job) => {
-  const { videoId } = job.data;
-
-  await job.updateProgress(0);
-  await job.log('Starting video download');
-
-  const video = await downloadVideo(videoId);
-  await job.updateProgress(30);
-
-  await job.log('Transcoding video');
-  const transcoded = await transcodeVideo(video);
-  await job.updateProgress(70);
-
-  await job.log('Uploading to CDN');
-  const cdnUrl = await uploadToCDN(transcoded);
-  await job.updateProgress(100);
-
-  return { cdnUrl, videoId };
-});
+// Массовая постановка задач
+await emailQueue.addBulk(
+  users.map((user) => ({
+    name: 'newsletter',
+    data: { to: user.email, subject: 'Weekly digest', body: renderTemplate(user) },
+    opts: { priority: user.isVip ? 1 : 5 },
+  })),
+);
 ```
 
-### Batch Jobs
+### Повторяющиеся задания
 
 ```javascript
-const { Queue } = require('bullmq');
-
-const queue = new Queue('batch-processing');
-
-// Добавление батча задач
-async function processBatch(items) {
-  const jobs = items.map((item, index) => ({
-    name: 'process-item',
-    data: { item },
-    opts: {
-      jobId: `batch-1-item-${index}`,  // Уникальный ID
-    },
-  }));
-
-  await queue.addBulk(jobs);
-}
-
-// Обработка
-const worker = new Worker('batch-processing', async (job) => {
-  const { item } = job.data;
-  return await processItem(item);
-});
-
-// Мониторинг завершения батча
-async function waitForBatchCompletion(batchId, itemCount) {
-  let completed = 0;
-
-  const listener = new QueueEvents('batch-processing');
-
-  listener.on('completed', ({ jobId }) => {
-    if (jobId.startsWith(`batch-${batchId}`)) {
-      completed++;
-
-      if (completed === itemCount) {
-        console.log(`Batch ${batchId} completed!`);
-        listener.close();
-      }
-    }
-  });
-}
-```
-
-### Rate Limiting
-
-```javascript
-const worker = new Worker('api-calls', async (job) => {
-  // Вызов внешнего API
-  const result = await fetch(`https://api.example.com/data/${job.data.id}`);
-  return await result.json();
-}, {
-  limiter: {
-    max: 100,      // Максимум 100 запросов
-    duration: 60000,  // за 60 секунд
-    groupKey: 'api-calls',
+await emailQueue.add(
+  'daily-report',
+  {},
+  {
+    repeat: { cron: '0 8 * * *', tz: 'Europe/Moscow' }, // каждый день в 08:00
+    jobId: 'daily-report',
   },
-});
+);
 ```
 
-### Scheduled/Recurring Jobs
-
-```javascript
-const { Queue } = require('bullmq');
-
-const scheduledQueue = new Queue('scheduled-tasks');
-
-// Cron-like scheduling
-await scheduledQueue.add('backup-database', {}, {
-  repeat: {
-    pattern: '0 2 * * *',  // Каждый день в 2:00 AM
-    tz: 'America/New_York',
-  },
-});
-
-await scheduledQueue.add('send-weekly-report', {}, {
-  repeat: {
-    pattern: '0 9 * * 1',  // Каждый понедельник в 9:00
-  },
-});
-
-// Every N minutes
-await scheduledQueue.add('health-check', {}, {
-  repeat: {
-    every: 300000,  // Каждые 5 минут
-  },
-});
-```
-
-### Flow: Параллельные и последовательные задачи
+### Flows (цепочки/граф)
 
 ```javascript
 const { FlowProducer } = require('bullmq');
 
-const flowProducer = new FlowProducer({
-  connection: { host: 'localhost', port: 6379 }
-});
+const flowProducer = new FlowProducer({ connection });
 
-// Сложный workflow
-const flow = await flowProducer.add({
+await flowProducer.add({
   name: 'process-order',
   queueName: 'orders',
-  data: { orderId: 12345 },
+  data: { orderId: 123 },
   children: [
     {
       name: 'charge-payment',
       queueName: 'payments',
-      data: { orderId: 12345, amount: 99.99 },
-    },
-    {
-      name: 'update-inventory',
-      queueName: 'inventory',
-      data: { orderId: 12345 },
+      data: { orderId: 123 },
       children: [
         {
-          name: 'notify-warehouse',
+          name: 'notify-services',
           queueName: 'notifications',
-          data: { type: 'inventory-updated' },
+          data: { orderId: 123 },
+          children: [
+            { name: 'send-email', queueName: 'emails', data: { type: 'order-confirmation', orderId: 123 } },
+            { name: 'notify-crm', queueName: 'crm', data: { orderId: 123 } },
+          ],
         },
       ],
-    },
-    {
-      name: 'send-confirmation',
-      queueName: 'emails',
-      data: { orderId: 12345 },
     },
   ],
 });
 ```
 
-### Мониторинг с Bull Board
-
-```bash
-npm install @bull-board/express @bull-board/api
-```
+### Ограничение скорости и токены
 
 ```javascript
+const rateLimitedQueue = new Queue('sms', {
+  connection,
+  limiter: {
+    max: 30,          // не больше 30 задач
+    duration: 1000,   // за 1 секунду
+  },
+});
+```
+
+### Dead Letter Queue (DLQ)
+
+```javascript
+const dlqQueue = new Queue('emails-dlq', { connection });
+
+const worker = new Worker(
+  'emails',
+  async (job) => { /* ... */ },
+  {
+    connection,
+    attempts: 5,
+    backoff: { type: 'fixed', delay: 15_000 },
+  },
+);
+
+worker.on('failed', async (job, error) => {
+  if (job.attemptsMade >= job.opts.attempts) {
+    await dlqQueue.add('email-failed', {
+      jobId: job.id,
+      payload: job.data,
+      reason: error.message,
+    });
+  }
+});
+```
+
+## Другие инструменты из мира Node.js
+
+### Agenda (MongoDB)
+
+- хранит задачи в коллекции MongoDB;
+- удобна для cron/periodic jobs;
+- подходит, если уже используете MongoDB и нет высоких требований к скорости.
+
+```javascript
+const Agenda = require('agenda');
+const agenda = new Agenda({ db: { address: process.env.MONGO_URL } });
+
+agenda.define('send notification', async (job) => {
+  await sendNotification(job.attrs.data);
+});
+
+await agenda.start();
+await agenda.every('10 minutes', 'send notification', { type: 'reminder' });
+```
+
+### Bree
+
+Bree — простой cron-планировщик (создаёт worker threads). Удобно для сценариев, где задачи — отдельные файлы.
+
+```javascript
+const Bree = require('bree');
+const bree = new Bree({
+  jobs: [
+    { name: 'backup', interval: 'at 03:00' },
+    { name: 'cache-warmup', timeout: '5m', interval: '1h' },
+  ],
+});
+
+bree.start();
+```
+
+### Worker Threads для CPU-bound
+
+Если задача забивает одно ядро, даже вынесенная в очередь, она всё равно блокирует event loop. Worker Threads — альтернатива: создаём pool и направляем тяжёлые операции туда.
+
+```javascript
+const { Worker } = require('node:worker_threads');
+
+function runInWorker(data) {
+  return new Promise((resolve, reject) => {
+    const worker = new Worker('./workers/heavy-task.js', { workerData: data });
+    worker.once('message', resolve);
+    worker.once('error', reject);
+    worker.once('exit', (code) => {
+      if (code !== 0) reject(new Error(`Worker stopped with exit code ${code}`));
+    });
+  });
+}
+```
+
+## Надёжность
+
+### Идемпотентность
+
+- задавайте `jobId`, чтобы предотвращать дубли;
+- сохраняйте факт обработки в базе/Redis;
+- используйте «dedupe-ключи» (message key).
+
+```javascript
+await paymentsQueue.add(
+  'charge-card',
+  { paymentId: 'pay_123' },
+  { jobId: 'payment:pay_123' },
+);
+```
+
+### Повторные попытки
+
+- настраивайте `attempts` и `backoff` (fixed/exponential/custom);
+- учитывайте ошибки, которые не стоит ретраить (валидация, «пользователь не найден»).
+
+```javascript
+await queue.add('fetch-report', { reportId }, {
+  attempts: 6,
+  backoff: {
+    type: 'custom',
+    delay: (attemptsMade) => Math.min(2 ** attemptsMade * 1000, 60_000),
+  },
+});
+```
+
+### Circuit breaker / Drop
+
+```javascript
+const { RateLimiterMemory } = require('rate-limiter-flexible');
+
+const breaker = new RateLimiterMemory({ points: 10, duration: 60 });
+
+async function guardedJob(job) {
+  try {
+    await breaker.consume('external-service');
+    return await callExternalService(job.data);
+  } catch (error) {
+    if (error instanceof RateLimiterMemory.RateLimiterRes) {
+      throw new Error('Circuit open, retry later');
+    }
+    throw error;
+  }
+}
+```
+
+### DLQ и алерты
+
+Раз в N минут опрашивайте DLQ, отправляйте уведомления в Slack/Email, сохраняйте статистику.
+
+```javascript
+const stuckJobs = await dlqQueue.getJobs(['waiting', 'delayed']);
+if (stuckJobs.length > 0) {
+  await notifyOnCall({ queue: 'emails-dlq', count: stuckJobs.length });
+}
+```
+
+## Наблюдаемость (Observability)
+
+### Метрики
+
+```javascript
+const promClient = require('prom-client');
+
+const jobsProcessed = new promClient.Counter({
+  name: 'queue_jobs_total',
+  help: 'Total jobs processed',
+  labelNames: ['queue', 'status'],
+});
+
+const jobDuration = new promClient.Histogram({
+  name: 'queue_job_duration_seconds',
+  help: 'Job duration',
+  labelNames: ['queue'],
+  buckets: [0.05, 0.1, 0.25, 0.5, 1, 2, 5, 10, 30],
+});
+
+worker.on('completed', (job) => {
+  jobsProcessed.labels(job.queueName, 'completed').inc();
+  jobDuration.labels(job.queueName).observe((job.finishedOn - job.processedOn) / 1000);
+});
+
+worker.on('failed', (job) => {
+  jobsProcessed.labels(job.queueName, 'failed').inc();
+});
+```
+
+### Логи
+
+- логируйте id задачи, payload, попытки;
+- используйте correlation-id/trace-id для связи с HTTP-запросом;
+- храните логи в централизованном хранилище (ELK, Loki, Datadog).
+
+### Bull Board / Arena
+
+```javascript
+const express = require('express');
 const { createBullBoard } = require('@bull-board/api');
 const { BullMQAdapter } = require('@bull-board/api/bullMQAdapter');
 const { ExpressAdapter } = require('@bull-board/express');
-const express = require('express');
-
-const app = express();
 
 const serverAdapter = new ExpressAdapter();
-serverAdapter.setBasePath('/admin/queues');
+serverAdapter.setBasePath('/queues');
 
 createBullBoard({
   queues: [
     new BullMQAdapter(emailQueue),
-    new BullMQAdapter(videoQueue),
-    new BullMQAdapter(batchQueue),
+    new BullMQAdapter(signupQueue),
   ],
   serverAdapter,
 });
 
-app.use('/admin/queues', serverAdapter.getRouter());
-
-app.listen(3000, () => {
-  console.log('Bull Board available at http://localhost:3000/admin/queues');
-});
+const app = express();
+app.use('/queues', serverAdapter.getRouter());
+app.listen(3000, () => console.log('Bull Board: http://localhost:3000/queues'));
 ```
 
-## Паттерны и Best Practices
+## Масштабирование
 
-### 1. Idempotency
+### Вертикальное
+
+- увеличиваем concurrency в рамках одного воркера (`concurrency: 50`);
+- используем worker threads для CPU-задач.
+
+### Горизонтальное
+
+- поднимаем больше экземпляров воркеров (в Docker/Kubernetes/PM2);
+- следим за лимитами Redis (подключения и память);
+- используем Redis Cluster либо sharding по типам задач.
+
+### Авто-масштабирование
+
+- метрики (Jobs waiting, обработка > X секунд);
+- в Kubernetes — HPA + кастомные metrics;
+- в AWS — Lambda + SQS (serverless) или ECS Fargate.
+
+### Тонкости
+
+- не забывайте про «произвольный порядок» — одна задача может выполняться несколько раз, поэтому все обработчики должны быть идемпотентными;
+- Heavy users: разделяйте очереди по типам задач (email / CRM / analytics), чтобы медленные работы не забивали быстрые;
+- максимальный размер payload — не храните большие файлы; лучше складывайте их в S3 и кладите ссылку в job.data.
+
+## Практический пример: обработка заказа
+
+### Очереди
 
 ```javascript
-// BullMQ
-const worker = new Worker('payments', async (job) => {
-  const { paymentId } = job.data;
-
-  // BullMQ автоматически предотвращает дублирование с jobId
-  const existing = await paymentQueue.getJob(paymentId);
-  if (existing && existing.finishedOn) {
-    return { status: 'already_processed' };
-  }
-
-  return await processPayment(paymentId);
-});
-
-// При добавлении задачи используем paymentId как jobId
-await paymentQueue.add('process', { paymentId: '123' }, {
-  jobId: paymentId,  // Уникальный ID предотвратит дубликаты
-});
+const queues = {
+  orders: new Queue('orders', { connection }),
+  payments: new Queue('payments', { connection }),
+  inventory: new Queue('inventory', { connection }),
+  notifications: new Queue('notifications', { connection }),
+};
 ```
 
-### 2. Error Handling & Dead Letter Queue
+### Постановка pipeline
 
 ```javascript
-// BullMQ
-const worker = new Worker('tasks', async (job) => {
-  try {
-    return await performOperation(job.data);
-  } catch (error) {
-    if (error.retriable) {
-      throw error;  // BullMQ сделает retry автоматически
-    } else {
-      // Отправить в DLQ
-      await dlqQueue.add('failed-task', {
-        originalJob: job.data,
-        error: error.message,
-        attemptsMade: job.attemptsMade,
-      });
+const flow = new FlowProducer({ connection });
 
-      await job.moveToFailed(error, true);  // true = не retry
-    }
-  }
-}, {
-  attempts: 3,
-  backoff: {
-    type: 'exponential',
-    delay: 2000,
-  },
-});
-```
-
-### 3. Graceful Shutdown
-
-```javascript
-// BullMQ
-async function gracefulShutdown() {
-  console.log('Shutting down gracefully...');
-
-  await worker.close();  // Дождаться завершения текущих задач
-  await queue.close();
-
-  process.exit(0);
-}
-
-process.on('SIGTERM', gracefulShutdown);
-process.on('SIGINT', gracefulShutdown);
-```
-
-### 4. Resource Cleanup
-
-```javascript
-const fs = require('fs/promises');
-
-const fileWorker = new Worker(
-  'files',
-  async (job) => {
-    let tempFilePath;
-    try {
-      tempFilePath = await downloadFile(job.data.filePath);
-      const result = await processFile(tempFilePath);
-      await uploadResult(result);
-      return result;
-    } finally {
-      if (tempFilePath) {
-        await fs.rm(tempFilePath, { force: true });
-      }
-    }
-  },
-  { connection },
-);
-```
-
-### 5. Task Result Expiration
-
-```javascript
-// BullMQ
-await queue.add('task', data, {
-  removeOnComplete: 100,   // Хранить только 100 последних completed
-  removeOnFail: 500,       // Хранить только 500 последних failed
-});
-```
-
-### 6. Metrics и Monitoring
-
-```javascript
-// BullMQ + Prometheus
-const client = require('prom-client');
-
-const taskCounter = new client.Counter({
-  name: 'bullmq_tasks_total',
-  help: 'Total tasks',
-  labelNames: ['queue', 'status'],
-});
-
-const taskDuration = new client.Histogram({
-  name: 'bullmq_task_duration_seconds',
-  help: 'Task duration',
-  labelNames: ['queue'],
-});
-
-worker.on('completed', (job) => {
-  taskCounter.labels(job.queueName, 'completed').inc();
-  taskDuration.labels(job.queueName).observe(job.finishedOn - job.processedOn);
-});
-
-worker.on('failed', (job) => {
-  taskCounter.labels(job.queueName, 'failed').inc();
-});
-```
-
-## Celery vs BullMQ
-
-| Критерий | Celery | BullMQ |
-|----------|--------|--------|
-| **Язык** | Python | Node.js |
-| **Broker** | Redis, RabbitMQ, SQS | Redis only |
-| **Features** | Rich (canvas, chains, chords) | Modern, fast |
-| **Scheduling** | Celery Beat | Built-in (repeat) |
-| **UI** | Flower | Bull Board |
-| **Performance** | Good | Excellent |
-| **Complexity** | Medium | Lower |
-| **Ecosystem** | Mature | Growing |
-| **Best for** | Python apps, complex workflows | Node.js apps, simplicity |
-
-## Практический пример: E-commerce Order Processing
-
-### Celery версия
-
-### BullMQ версия
-
-```javascript
-const { Queue, Worker, FlowProducer } = require('bullmq');
-
-const orderQueue = new Queue('orders');
-const paymentQueue = new Queue('payments');
-const inventoryQueue = new Queue('inventory');
-const notificationQueue = new Queue('notifications');
-
-// Flow: последовательная обработка
 async function processOrder(orderId) {
-  const flow = await flowProducer.add({
+  await flow.add({
     name: 'validate-order',
     queueName: 'orders',
     data: { orderId },
@@ -999,123 +469,109 @@ async function processOrder(orderId) {
         name: 'charge-payment',
         queueName: 'payments',
         data: { orderId },
+        opts: { jobId: `payment:${orderId}` },
         children: [
           {
-            name: 'update-inventory',
+            name: 'reserve-inventory',
             queueName: 'inventory',
             data: { orderId },
             children: [
-              {
-                name: 'send-email',
-                queueName: 'notifications',
-                data: { orderId, type: 'email' },
-              },
-              {
-                name: 'send-sms',
-                queueName: 'notifications',
-                data: { orderId, type: 'sms' },
-              },
-              {
-                name: 'notify-warehouse',
-                queueName: 'notifications',
-                data: { orderId, type: 'warehouse' },
-              },
+              { name: 'send-confirmation-email', queueName: 'notifications', data: { orderId } },
+              { name: 'notify-warehouse', queueName: 'notifications', data: { orderId, channel: 'webhook' } },
             ],
           },
         ],
       },
     ],
   });
-
-  return flow;
 }
+```
 
-// Workers
+### Воркеры
+
+```javascript
 new Worker('orders', async (job) => {
-  const { orderId } = job.data;
-  const order = await db.getOrder(orderId);
-
-  if (order.total <= 0 || !order.items.length) {
+  const order = await OrdersRepository.get(job.data.orderId);
+  if (!order.items.length || order.total <= 0) {
     throw new Error('Invalid order');
   }
-
-  return { orderId, validated: true };
-});
+  return { valid: true };
+}, { connection });
 
 new Worker('payments', async (job) => {
   const { orderId } = job.data;
-  const order = await db.getOrder(orderId);
-
-  const paymentId = await stripe.charge(order.total, order.paymentMethod);
-  await db.updateOrder(orderId, { paymentId });
-
-  return { orderId, paymentId };
-});
+  const order = await OrdersRepository.get(orderId);
+  const payment = await PaymentGateway.charge(order);
+  await OrdersRepository.setPayment(orderId, payment.id);
+  return { paymentId: payment.id };
+}, { connection, attempts: 3, backoff: { type: 'exponential', delay: 5_000 } });
 
 new Worker('inventory', async (job) => {
-  const { orderId } = job.data;
-  const order = await db.getOrder(orderId);
-
-  for (const item of order.items) {
-    await inventory.decrease(item.productId, item.quantity);
-  }
-
-  return { orderId, inventoryUpdated: true };
-});
+  const order = await OrdersRepository.get(job.data.orderId);
+  await InventoryService.reserve(order.items);
+}, { connection });
 
 new Worker('notifications', async (job) => {
-  const { orderId, type } = job.data;
-
-  switch (type) {
-    case 'email':
-      await sendConfirmationEmail(orderId);
-      break;
-    case 'sms':
-      await sendSMS(orderId);
-      break;
-    case 'warehouse':
-      await notifyWarehouse(orderId);
-      break;
+  if (job.name === 'send-confirmation-email') {
+    await EmailService.sendConfirmation(job.data.orderId);
+  } else if (job.name === 'notify-warehouse') {
+    await WarehouseClient.notify(job.data.orderId);
   }
-
-  return { orderId, notificationType: type, sent: true };
-});
+}, { connection });
 ```
+
+### Мониторинг DLQ
+
+```javascript
+const failed = await queues.notifications.getJobs(['failed'], 0, 50);
+for (const job of failed) {
+  await alertOpsTeam({
+    queue: job.queueName,
+    jobId: job.id,
+    error: job.failedReason,
+    payload: job.data,
+  });
+}
+```
+
+## Практические советы
+
+1. **Храните минимум данных в задачах** — лучше передавать ID и заново извлекать state (из БД, кеша).
+2. **Используйте версии схемы** в payload (`{ version: 2, ... }`), чтобы воркеры могли работать с несколькими версиями.
+3. **Прозрачные ретраи** — логируйте сведения о попытках (`job.attemptsMade`), сохраняйте их в метриках.
+4. **Graceful shutdown** — закрывайте воркеры корректно.
+
+```javascript
+async function shutdown() {
+  await emailWorker.close();
+  await queues.emails.close();
+  process.exit(0);
+}
+
+process.on('SIGTERM', shutdown);
+process.on('SIGINT', shutdown);
+```
+
+5. **Разделяйте очереди**: быстрые и медленные задачи, разные SLA, приоритеты.
+6. **Дублируйте критичные события** — если часть pipeline критична, публикуйте событие в Kafka/SQS как вторичную защиту.
+7. **Тестируйте failure-сценарии** — имитация недоступности Redis, внешних API, ошибочных payload.
+
+## Чек-лист перед продом
+
+- [ ] Очереди отделены по доменам и SLA.
+- [ ] Все обработчики идемпотентны (или используют `jobId`/locks).
+- [ ] Настроены повторные попытки, backoff, DLQ.
+- [ ] Есть мониторинг (Bull Board, метрики, алерты).
+- [ ] Воркеры умеют graceful shutdown, перезапуск без потери данных.
+- [ ] Есть стратегия масштабирования (HPA, auto-scaling, вручную).
+- [ ] Документация описывает формат сообщений и схемы.
 
 ## Выводы
 
-Async Workers — критический компонент современных веб-приложений:
-
-**Ключевые преимущества:**
-- **Responsiveness**: быстрый ответ пользователю
-- **Scalability**: независимое масштабирование воркеров
-- **Reliability**: retry механизмы и DLQ
-- **Decoupling**: разделение concerns
-- **Resource optimization**: эффективное использование ресурсов
-
-**Celery** — зрелое решение для Python с богатым функционалом.
-**BullMQ** — современное и быстрое решение для Node.js.
-
-Выбор зависит от стека технологий и сложности workflows.
-
-## Что читать дальше?
-
-- [Урок 24: WebSockets в production](24-websockets-production.md)
-- [Урок 21: Message Queues](21-message-queues.md)
-- [Урок 22: Kafka и Event Streaming](22-kafka-event-streaming.md)
-
-## Проверь себя
-
-1. В чём разница между синхронной и асинхронной обработкой задач?
-2. Какие компоненты входят в архитектуру Celery?
-3. Как реализовать retry с exponential backoff?
-4. Что такое Celery Beat и зачем он нужен?
-5. Чем отличается chain от group в Celery?
-6. Как обеспечить idempotency при обработке задач?
-7. Что такое Dead Letter Queue и когда его использовать?
-8. Как реализовать graceful shutdown для воркеров?
-9. В чём разница между Celery и BullMQ?
-10. Когда использовать async workers вместо синхронной обработки?
+- Асинхронные воркеры разгружают основное приложение и улучшают пользовательский опыт.
+- Node.js предлагает богатый набор инструментов: BullMQ — основной выбор, но есть и другие опции.
+- Надёжность — ретраевые стратегии, DLQ, идемпотентность — обязательны в продакшене.
+- Переход на асинхронную обработку требует наблюдаемости и планирования ресурсов, но окупается повышением устойчивости и масштабируемости.
 
 ---
 **Предыдущий урок**: [Урок 22: Kafka и Event Streaming](22-kafka-event-streaming.md)

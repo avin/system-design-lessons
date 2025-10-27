@@ -290,7 +290,7 @@ AWS Simple Queue Service — полностью управляемый серв�
 | **Deduplication** | Нет | Есть (5 минут) |
 | **Use case** | Высокая нагрузка | Важен порядок |
 
-### Пример: Standard Queue (Python + boto3)
+### Пример: Standard Queue
 
 ```javascript
 const {

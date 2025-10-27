@@ -146,7 +146,7 @@ kafka-topics --list --bootstrap-server localhost:9092
 kafka-topics --describe --topic orders --bootstrap-server localhost:9092
 ```
 
-## Producer (Python)
+## Producer 
 
 ### Базовый Producer
 
@@ -338,7 +338,7 @@ async function sendTransactional() {
 sendTransactional().catch(console.error);
 ```
 
-## Consumer (Python)
+## Consumer 
 
 ### Базовый Consumer
 
