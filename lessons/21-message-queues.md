@@ -87,115 +87,104 @@ Producer → Exchange → Binding → Queue → Consumer
 
 ### Пример: Direct Exchange
 
-```python
-import pika
+```javascript
+const amqp = require('amqplib');
 
-# Подключение к RabbitMQ
-connection = pika.BlockingConnection(
-    pika.ConnectionParameters('localhost')
-)
-channel = connection.channel()
+async function publishDirectLog() {
+  // Подключение к RabbitMQ
+  const connection = await amqp.connect('amqp://localhost');
+  const channel = await connection.createChannel();
 
-# Объявление exchange и очереди
-channel.exchange_declare(exchange='direct_logs', exchange_type='direct')
-channel.queue_declare(queue='error_logs')
+  // Объявление exchange и очереди
+  await channel.assertExchange('direct_logs', 'direct', { durable: true });
+  await channel.assertQueue('error_logs', { durable: true });
 
-# Binding: связываем очередь с exchange через routing key
-channel.queue_bind(
-    exchange='direct_logs',
-    queue='error_logs',
-    routing_key='error'
-)
+  // Binding: связываем очередь с exchange через routing key
+  await channel.bindQueue('error_logs', 'direct_logs', 'error');
 
-# Producer: отправка сообщения
-channel.basic_publish(
-    exchange='direct_logs',
-    routing_key='error',
-    body='Database connection failed',
-    properties=pika.BasicProperties(
-        delivery_mode=2,  # persistent message
-    )
-)
+  // Producer: отправка сообщения
+  channel.publish('direct_logs', 'error', Buffer.from('Database connection failed'), {
+    persistent: true,
+  });
 
-print("Message sent")
-connection.close()
+  console.log('Message sent');
+  await channel.close();
+  await connection.close();
+}
+
+publishDirectLog().catch(console.error);
 ```
 
 ### Пример: Consumer с Acknowledgment
 
-```python
-import pika
-import time
+```javascript
+async function consumeWithAck() {
+  const connection = await amqp.connect('amqp://localhost');
+  const channel = await connection.createChannel();
 
-connection = pika.BlockingConnection(
-    pika.ConnectionParameters('localhost')
-)
-channel = connection.channel()
+  await channel.assertQueue('task_queue', { durable: true });
 
-channel.queue_declare(queue='task_queue', durable=True)
+  // Prefetch: обрабатывать по 1 сообщению за раз
+  await channel.prefetch(1);
 
-def callback(ch, method, properties, body):
-    print(f"Received: {body.decode()}")
+  channel.consume(
+    'task_queue',
+    async (msg) => {
+      if (!msg) {
+        return;
+      }
 
-    # Имитация долгой обработки
-    time.sleep(body.count(b'.'))
+      const body = msg.content.toString();
+      console.log(`Received: ${body}`);
 
-    print("Done")
+      // Имитация долгой обработки
+      const delaySeconds = (body.match(/\./g) || []).length;
+      await new Promise((resolve) => setTimeout(resolve, delaySeconds * 1000));
 
-    # Manual acknowledgment
-    ch.basic_ack(delivery_tag=method.delivery_tag)
+      console.log('Done');
 
-# Prefetch: обрабатывать по 1 сообщению за раз
-channel.basic_qos(prefetch_count=1)
+      // Manual acknowledgment
+      channel.ack(msg);
+    },
+    { noAck: false },
+  );
 
-channel.basic_consume(
-    queue='task_queue',
-    on_message_callback=callback,
-    auto_ack=False  # Manual ack
-)
+  console.log('Waiting for messages...');
+}
 
-print('Waiting for messages...')
-channel.start_consuming()
+consumeWithAck().catch(console.error);
 ```
 
 ### Topic Exchange с Wildcards
 
-```python
-# Producer
-channel.exchange_declare(exchange='logs_topic', exchange_type='topic')
+```javascript
+async function setupTopicExchange() {
+  const connection = await amqp.connect('amqp://localhost');
+  const channel = await connection.createChannel();
 
-# Отправка логов разных уровней
-channel.basic_publish(
-    exchange='logs_topic',
-    routing_key='app.error.database',
-    body='DB error occurred'
-)
+  await channel.assertExchange('logs_topic', 'topic', { durable: true });
 
-channel.basic_publish(
-    exchange='logs_topic',
-    routing_key='app.info.user',
-    body='User logged in'
-)
+  // Отправка логов разных уровней
+  channel.publish('logs_topic', 'app.error.database', Buffer.from('DB error occurred'));
+  channel.publish('logs_topic', 'app.info.user', Buffer.from('User logged in'));
 
-# Consumer 1: все ошибки
-channel.queue_bind(
-    exchange='logs_topic',
-    queue='all_errors',
-    routing_key='*.error.*'
-)
+  // Consumer 1: все ошибки
+  await channel.assertQueue('all_errors', { durable: true });
+  await channel.bindQueue('all_errors', 'logs_topic', '*.error.*');
 
-# Consumer 2: все логи приложения
-channel.queue_bind(
-    exchange='logs_topic',
-    queue='app_logs',
-    routing_key='app.#'
-)
+  // Consumer 2: все логи приложения
+  await channel.assertQueue('app_logs', { durable: true });
+  await channel.bindQueue('app_logs', 'logs_topic', 'app.#');
 
-# Consumer 3: только ошибки БД
-channel.queue_bind(
-    exchange='logs_topic',
-    routing_key='*.error.database'
-)
+  // Consumer 3: только ошибки БД
+  await channel.assertQueue('db_errors', { durable: true });
+  await channel.bindQueue('db_errors', 'logs_topic', '*.error.database');
+
+  await channel.close();
+  await connection.close();
+}
+
+setupTopicExchange().catch(console.error);
 ```
 
 **Wildcards:**
@@ -206,37 +195,48 @@ channel.queue_bind(
 
 Обработка "мёртвых" сообщений, которые не смогли обработаться:
 
-```python
-# Основная очередь с DLX
-channel.queue_declare(
-    queue='main_queue',
-    arguments={
-        'x-dead-letter-exchange': 'dlx_exchange',
-        'x-dead-letter-routing-key': 'failed',
-        'x-message-ttl': 60000  # 60 секунд
-    }
-)
+```javascript
+async function setupDeadLetterExchange() {
+  const connection = await amqp.connect('amqp://localhost');
+  const channel = await connection.createChannel();
 
-# Dead Letter Queue
-channel.exchange_declare(exchange='dlx_exchange', exchange_type='direct')
-channel.queue_declare(queue='dead_letters')
-channel.queue_bind(
-    exchange='dlx_exchange',
-    queue='dead_letters',
-    routing_key='failed'
-)
+  // Dead Letter Queue
+  await channel.assertExchange('dlx_exchange', 'direct', { durable: true });
+  await channel.assertQueue('dead_letters', { durable: true });
+  await channel.bindQueue('dead_letters', 'dlx_exchange', 'failed');
 
-# Consumer с возможностью reject
-def callback(ch, method, properties, body):
-    try:
-        process_message(body)
-        ch.basic_ack(delivery_tag=method.delivery_tag)
-    except Exception as e:
-        # Reject без requeue → попадёт в DLX
-        ch.basic_nack(
-            delivery_tag=method.delivery_tag,
-            requeue=False
-        )
+  // Основная очередь с DLX
+  await channel.assertQueue('main_queue', {
+    durable: true,
+    arguments: {
+      'x-dead-letter-exchange': 'dlx_exchange',
+      'x-dead-letter-routing-key': 'failed',
+      'x-message-ttl': 60_000, // 60 секунд
+    },
+  });
+
+  // Consumer с возможностью reject
+  channel.consume(
+    'main_queue',
+    async (msg) => {
+      if (!msg) {
+        return;
+      }
+
+      try {
+        await processMessage(msg.content.toString());
+        channel.ack(msg);
+      } catch (error) {
+        console.error('Failed to process message:', error);
+        // Reject без requeue → попадёт в DLX
+        channel.nack(msg, false, false);
+      }
+    },
+    { noAck: false },
+  );
+}
+
+setupDeadLetterExchange().catch(console.error);
 ```
 
 ### RabbitMQ Best Practices
@@ -249,20 +249,32 @@ def callback(ch, method, properties, body):
 6. **Heartbeats** для обнаружения потери соединения
 7. **Connection pooling** для производительности
 
-```python
-# Publisher Confirms
-channel.confirm_delivery()
+```javascript
+async function publishWithConfirm() {
+  const connection = await amqp.connect('amqp://localhost');
+  const channel = await connection.createConfirmChannel();
 
-try:
-    channel.basic_publish(
-        exchange='',
-        routing_key='queue_name',
-        body='message',
-        mandatory=True  # Вернёт ошибку, если нет очереди
-    )
-    print("Message confirmed")
-except pika.exceptions.UnroutableError:
-    print("Message could not be routed")
+  await channel.assertQueue('queue_name', { durable: true });
+
+  channel.on('return', (msg) => {
+    console.error('Message could not be routed:', msg.content.toString());
+  });
+
+  try {
+    channel.publish('', 'queue_name', Buffer.from('message'), {
+      mandatory: true, // Вернёт сообщение в случае отсутствия очереди
+      persistent: true,
+    });
+
+    await channel.waitForConfirms();
+    console.log('Message confirmed');
+  } finally {
+    await channel.close();
+    await connection.close();
+  }
+}
+
+publishWithConfirm().catch(console.error);
 ```
 
 ## Amazon SQS
@@ -281,99 +293,134 @@ AWS Simple Queue Service — полностью управляемый серв�
 
 ### Пример: Standard Queue (Python + boto3)
 
-```python
-import boto3
-import json
+```javascript
+const {
+  SQSClient,
+  CreateQueueCommand,
+  SendMessageCommand,
+  ReceiveMessageCommand,
+  DeleteMessageCommand,
+  ChangeMessageVisibilityCommand,
+  GetQueueAttributesCommand,
+  SendMessageBatchCommand,
+  DeleteMessageBatchCommand,
+} = require('@aws-sdk/client-sqs');
 
-# Создание клиента SQS
-sqs = boto3.client('sqs', region_name='us-east-1')
+const sqs = new SQSClient({ region: 'us-east-1' });
 
-# Создание очереди
-queue_response = sqs.create_queue(
-    QueueName='my-task-queue',
-    Attributes={
-        'DelaySeconds': '0',
-        'MessageRetentionPeriod': '86400',  # 1 день
-        'VisibilityTimeout': '30'  # 30 секунд
-    }
-)
-
-queue_url = queue_response['QueueUrl']
-
-# Отправка сообщения
-response = sqs.send_message(
-    QueueUrl=queue_url,
-    MessageBody=json.dumps({
-        'task': 'send_email',
-        'to': 'user@example.com',
-        'subject': 'Welcome!'
+async function standardQueueExample() {
+  // Создание очереди
+  const queueResponse = await sqs.send(
+    new CreateQueueCommand({
+      QueueName: 'my-task-queue',
+      Attributes: {
+        DelaySeconds: '0',
+        MessageRetentionPeriod: '86400', // 1 день
+        VisibilityTimeout: '30', // 30 секунд
+      },
     }),
-    MessageAttributes={
-        'Priority': {
-            'StringValue': 'high',
-            'DataType': 'String'
-        }
-    }
-)
+  );
 
-print(f"MessageId: {response['MessageId']}")
+  const queueUrl = queueResponse.QueueUrl;
 
-# Получение и обработка сообщений
-messages = sqs.receive_message(
-    QueueUrl=queue_url,
-    MaxNumberOfMessages=10,  # До 10 сообщений за раз
-    WaitTimeSeconds=20,  # Long polling
-    MessageAttributeNames=['All']
-)
+  // Отправка сообщения
+  const sendResponse = await sqs.send(
+    new SendMessageCommand({
+      QueueUrl: queueUrl,
+      MessageBody: JSON.stringify({
+        task: 'send_email',
+        to: 'user@example.com',
+        subject: 'Welcome!',
+      }),
+      MessageAttributes: {
+        Priority: {
+          StringValue: 'high',
+          DataType: 'String',
+        },
+      },
+    }),
+  );
 
-for message in messages.get('Messages', []):
-    body = json.loads(message['Body'])
-    print(f"Processing: {body}")
+  console.log(`MessageId: ${sendResponse.MessageId}`);
 
-    # Обработка...
+  // Получение и обработка сообщений
+  const messagesResponse = await sqs.send(
+    new ReceiveMessageCommand({
+      QueueUrl: queueUrl,
+      MaxNumberOfMessages: 10, // До 10 сообщений за раз
+      WaitTimeSeconds: 20, // Long polling
+      MessageAttributeNames: ['All'],
+    }),
+  );
 
-    # Удаление после успешной обработки
-    sqs.delete_message(
-        QueueUrl=queue_url,
-        ReceiptHandle=message['ReceiptHandle']
-    )
+  for (const message of messagesResponse.Messages || []) {
+    const body = JSON.parse(message.Body);
+    console.log('Processing:', body);
+
+    // Обработка...
+
+    // Удаление после успешной обработки
+    await sqs.send(
+      new DeleteMessageCommand({
+        QueueUrl: queueUrl,
+        ReceiptHandle: message.ReceiptHandle,
+      }),
+    );
+  }
+}
+
+standardQueueExample().catch(console.error);
 ```
 
 ### FIFO Queue
 
-```python
-# Создание FIFO очереди
-fifo_queue = sqs.create_queue(
-    QueueName='orders.fifo',  # Обязательно .fifo
-    Attributes={
-        'FifoQueue': 'true',
-        'ContentBasedDeduplication': 'true',
-        'MessageRetentionPeriod': '345600'  # 4 дня
-    }
-)
+```javascript
+async function fifoQueueExample() {
+  // Создание FIFO очереди
+  const fifoQueue = await sqs.send(
+    new CreateQueueCommand({
+      QueueName: 'orders.fifo', // Обязательно .fifo
+      Attributes: {
+        FifoQueue: 'true',
+        ContentBasedDeduplication: 'true',
+        MessageRetentionPeriod: '345600', // 4 дня
+      },
+    }),
+  );
 
-# Отправка с MessageGroupId (для ordering)
-sqs.send_message(
-    QueueUrl=fifo_queue['QueueUrl'],
-    MessageBody='Order #1234',
-    MessageGroupId='user_123',  # Сообщения в одной группе — строго по порядку
-    MessageDeduplicationId='order-1234-v1'  # Для exactly-once
-)
+  const fifoUrl = fifoQueue.QueueUrl;
 
-sqs.send_message(
-    QueueUrl=fifo_queue['QueueUrl'],
-    MessageBody='Order #1235',
-    MessageGroupId='user_123',
-    MessageDeduplicationId='order-1235-v1'
-)
+  // Отправка с MessageGroupId (для ordering)
+  await sqs.send(
+    new SendMessageCommand({
+      QueueUrl: fifoUrl,
+      MessageBody: 'Order #1234',
+      MessageGroupId: 'user_123', // Сообщения в одной группе — строго по порядку
+      MessageDeduplicationId: 'order-1234-v1', // Для exactly-once
+    }),
+  );
 
-# Второй пользователь — параллельная обработка
-sqs.send_message(
-    QueueUrl=fifo_queue['QueueUrl'],
-    MessageBody='Order #5678',
-    MessageGroupId='user_456',
-    MessageDeduplicationId='order-5678-v1'
-)
+  await sqs.send(
+    new SendMessageCommand({
+      QueueUrl: fifoUrl,
+      MessageBody: 'Order #1235',
+      MessageGroupId: 'user_123',
+      MessageDeduplicationId: 'order-1235-v1',
+    }),
+  );
+
+  // Второй пользователь — параллельная обработка
+  await sqs.send(
+    new SendMessageCommand({
+      QueueUrl: fifoUrl,
+      MessageBody: 'Order #5678',
+      MessageGroupId: 'user_456',
+      MessageDeduplicationId: 'order-5678-v1',
+    }),
+  );
+}
+
+fifoQueueExample().catch(console.error);
 ```
 
 ### Visibility Timeout
@@ -392,87 +439,110 @@ Delete message → убрать из очереди навсегда
 Timeout истёк → сообщение снова видимо
 ```
 
-```python
-# Продление Visibility Timeout
-sqs.change_message_visibility(
-    QueueUrl=queue_url,
-    ReceiptHandle=receipt_handle,
-    VisibilityTimeout=60  # Продлить ещё на 60 секунд
-)
+```javascript
+// Продление Visibility Timeout
+await sqs.send(
+  new ChangeMessageVisibilityCommand({
+    QueueUrl: queueUrl,
+    ReceiptHandle: receiptHandle,
+    VisibilityTimeout: 60, // Продлить ещё на 60 секунд
+  }),
+);
 ```
 
 ### Dead Letter Queue (DLQ)
 
-```python
-# Создание DLQ
-dlq = sqs.create_queue(QueueName='failed-tasks-dlq')
-dlq_arn = sqs.get_queue_attributes(
-    QueueUrl=dlq['QueueUrl'],
-    AttributeNames=['QueueArn']
-)['Attributes']['QueueArn']
+```javascript
+async function setupDlq() {
+  // Создание DLQ
+  const dlq = await sqs.send(new CreateQueueCommand({ QueueName: 'failed-tasks-dlq' }));
+  const dlqAttributes = await sqs.send(
+    new GetQueueAttributesCommand({
+      QueueUrl: dlq.QueueUrl,
+      AttributeNames: ['QueueArn'],
+    }),
+  );
+  const dlqArn = dlqAttributes.Attributes.QueueArn;
 
-# Основная очередь с DLQ
-main_queue = sqs.create_queue(
-    QueueName='main-tasks',
-    Attributes={
-        'RedrivePolicy': json.dumps({
-            'deadLetterTargetArn': dlq_arn,
-            'maxReceiveCount': '3'  # После 3 попыток → в DLQ
-        })
-    }
-)
+  // Основная очередь с DLQ
+  await sqs.send(
+    new CreateQueueCommand({
+      QueueName: 'main-tasks',
+      Attributes: {
+        RedrivePolicy: JSON.stringify({
+          deadLetterTargetArn: dlqArn,
+          maxReceiveCount: '3', // После 3 попыток → в DLQ
+        }),
+      },
+    }),
+  );
+}
+
+setupDlq().catch(console.error);
 ```
 
 ### Batch Operations
 
 Для оптимизации стоимости и производительности:
 
-```python
-# Batch send (до 10 сообщений)
-response = sqs.send_message_batch(
-    QueueUrl=queue_url,
-    Entries=[
+```javascript
+async function batchOperations(queueUrl, receiptHandles) {
+  // Batch send (до 10 сообщений)
+  const batchResponse = await sqs.send(
+    new SendMessageBatchCommand({
+      QueueUrl: queueUrl,
+      Entries: [
         {
-            'Id': '1',
-            'MessageBody': 'Task 1'
+          Id: '1',
+          MessageBody: 'Task 1',
         },
         {
-            'Id': '2',
-            'MessageBody': 'Task 2',
-            'DelaySeconds': 10
+          Id: '2',
+          MessageBody: 'Task 2',
+          DelaySeconds: 10,
         },
         {
-            'Id': '3',
-            'MessageBody': 'Task 3'
-        }
-    ]
-)
+          Id: '3',
+          MessageBody: 'Task 3',
+        },
+      ],
+    }),
+  );
 
-# Batch delete
-sqs.delete_message_batch(
-    QueueUrl=queue_url,
-    Entries=[
-        {'Id': '1', 'ReceiptHandle': receipt1},
-        {'Id': '2', 'ReceiptHandle': receipt2},
-    ]
-)
+  console.log('Batch send status:', batchResponse);
+
+  // Batch delete
+  await sqs.send(
+    new DeleteMessageBatchCommand({
+      QueueUrl: queueUrl,
+      Entries: receiptHandles.map((handle, index) => ({
+        Id: `msg-${index}`,
+        ReceiptHandle: handle,
+      })),
+    }),
+  );
+}
 ```
 
 ### Long Polling vs Short Polling
 
-```python
-# Short Polling (default) - возвращает сразу
-messages = sqs.receive_message(
-    QueueUrl=queue_url,
-    WaitTimeSeconds=0  # Не ждать
-)
+```javascript
+// Short Polling (default) - возвращает сразу
+const shortPolling = await sqs.send(
+  new ReceiveMessageCommand({
+    QueueUrl: queueUrl,
+    WaitTimeSeconds: 0, // Не ждать
+  }),
+);
 
-# Long Polling - ждёт до 20 секунд
-messages = sqs.receive_message(
-    QueueUrl=queue_url,
-    WaitTimeSeconds=20,  # Экономия запросов + снижение latency
-    MaxNumberOfMessages=10
-)
+// Long Polling - ждёт до 20 секунд
+const longPolling = await sqs.send(
+  new ReceiveMessageCommand({
+    QueueUrl: queueUrl,
+    WaitTimeSeconds: 20, // Экономия запросов + снижение latency
+    MaxNumberOfMessages: 10,
+  }),
+);
 ```
 
 **Преимущества Long Polling:**
@@ -509,184 +579,234 @@ messages = sqs.receive_message(
 
 ### 1. Обработка заказов (E-commerce)
 
-```python
-# RabbitMQ Topic Exchange
-channel.exchange_declare(exchange='orders', exchange_type='topic')
+```javascript
+async function publishOrderEvent() {
+  const connection = await amqp.connect('amqp://localhost');
+  const channel = await connection.createChannel();
 
-# Producer: новый заказ
-order = {
-    'order_id': '12345',
-    'user_id': '789',
-    'total': 99.99,
-    'items': [...]
+  // RabbitMQ Topic Exchange
+  await channel.assertExchange('orders', 'topic', { durable: true });
+
+  // Producer: новый заказ
+  const order = {
+    order_id: '12345',
+    user_id: '789',
+    total: 99.99,
+    items: ['item-1', 'item-2'],
+  };
+
+  // Routing key: order.{status}.{priority}
+  channel.publish('orders', 'order.new.high', Buffer.from(JSON.stringify(order)), {
+    persistent: true,
+  });
+
+  // Consumer 1: Инвентарь (все заказы)
+  await channel.assertQueue('inventory-service', { durable: true });
+  await channel.bindQueue('inventory-service', 'orders', 'order.#');
+
+  // Consumer 2: Уведомления (только срочные)
+  await channel.assertQueue('notifications-service', { durable: true });
+  await channel.bindQueue('notifications-service', 'orders', 'order.*.high');
+
+  // Consumer 3: Аналитика (все новые)
+  await channel.assertQueue('analytics-service', { durable: true });
+  await channel.bindQueue('analytics-service', 'orders', 'order.new.*');
+
+  await channel.close();
+  await connection.close();
 }
 
-# Routing key: order.{status}.{priority}
-channel.basic_publish(
-    exchange='orders',
-    routing_key='order.new.high',
-    body=json.dumps(order)
-)
-
-# Consumer 1: Инвентарь (все заказы)
-channel.queue_bind(exchange='orders', routing_key='order.#')
-
-# Consumer 2: Уведомления (только срочные)
-channel.queue_bind(exchange='orders', routing_key='order.*.high')
-
-# Consumer 3: Аналитика (все новые)
-channel.queue_bind(exchange='orders', routing_key='order.new.*')
+publishOrderEvent().catch(console.error);
 ```
 
 ### 2. Email рассылка (SQS)
 
-```python
-import boto3
-from concurrent.futures import ThreadPoolExecutor
+```javascript
+const queueUrl = 'https://sqs.us-east-1.amazonaws.com/123/email-queue';
 
-sqs = boto3.client('sqs')
-queue_url = 'https://sqs.us-east-1.amazonaws.com/123/email-queue'
+// Producer: массовая рассылка
+async function enqueueEmailBatches() {
+  const users = await getUsersFromDb(); // 100,000 пользователей
 
-# Producer: массовая рассылка
-users = get_users_from_db()  # 100,000 пользователей
+  const batches = [];
+  for (let i = 0; i < users.length; i += 10) {
+    batches.push(users.slice(i, i + 10));
+  }
 
-def send_batch(batch):
-    entries = [
-        {
-            'Id': str(i),
-            'MessageBody': json.dumps({
-                'to': user['email'],
-                'template': 'newsletter',
-                'data': {'name': user['name']}
-            })
-        }
-        for i, user in enumerate(batch)
-    ]
-    sqs.send_message_batch(QueueUrl=queue_url, Entries=entries)
+  await Promise.all(
+    batches.map((batch, batchIndex) =>
+      sqs.send(
+        new SendMessageBatchCommand({
+          QueueUrl: queueUrl,
+          Entries: batch.map((user, index) => ({
+            Id: `${batchIndex}-${index}`,
+            MessageBody: JSON.stringify({
+              to: user.email,
+              template: 'newsletter',
+              data: { name: user.name },
+            }),
+          })),
+        }),
+      ),
+    ),
+  );
+}
 
-# Отправка батчами по 10
-batches = [users[i:i+10] for i in range(0, len(users), 10)]
-with ThreadPoolExecutor(max_workers=10) as executor:
-    executor.map(send_batch, batches)
+// Consumer: отправка email
+async function processEmails() {
+  while (true) {
+    const messages = await sqs.send(
+      new ReceiveMessageCommand({
+        QueueUrl: queueUrl,
+        MaxNumberOfMessages: 10,
+        WaitTimeSeconds: 20,
+      }),
+    );
 
-# Consumer: отправка email
-def process_emails():
-    while True:
-        messages = sqs.receive_message(
-            QueueUrl=queue_url,
-            MaxNumberOfMessages=10,
-            WaitTimeSeconds=20
-        )
+    for (const msg of messages.Messages || []) {
+      const data = JSON.parse(msg.Body);
+      await sendEmail(data.to, data.template, data.data);
 
-        for msg in messages.get('Messages', []):
-            data = json.loads(msg['Body'])
-            send_email(data['to'], data['template'], data['data'])
-
-            sqs.delete_message(
-                QueueUrl=queue_url,
-                ReceiptHandle=msg['ReceiptHandle']
-            )
+      await sqs.send(
+        new DeleteMessageCommand({
+          QueueUrl: queueUrl,
+          ReceiptHandle: msg.ReceiptHandle,
+        }),
+      );
+    }
+  }
+}
 ```
 
 ### 3. Image Processing Pipeline
 
-```python
-# RabbitMQ: цепочка обработки
-channel.queue_declare(queue='images.upload')
-channel.queue_declare(queue='images.resize')
-channel.queue_declare(queue='images.watermark')
-channel.queue_declare(queue='images.publish')
+```javascript
+async function setupImagePipeline() {
+  const connection = await amqp.connect('amqp://localhost');
 
-# Service 1: Upload handler
-def on_upload(ch, method, properties, body):
-    image = json.loads(body)
+  // RabbitMQ: цепочка обработки
+  const uploadChannel = await connection.createChannel();
+  const resizeChannel = await connection.createChannel();
+  const watermarkChannel = await connection.createChannel();
 
-    # Сохранить оригинал в S3
-    save_to_s3(image['url'], 'originals/')
+  await uploadChannel.assertQueue('images.upload', { durable: true });
+  await resizeChannel.assertQueue('images.resize', { durable: true });
+  await watermarkChannel.assertQueue('images.watermark', { durable: true });
+  await watermarkChannel.assertQueue('images.publish', { durable: true });
 
-    # Отправить на resize
-    ch.basic_publish(
-        exchange='',
-        routing_key='images.resize',
-        body=json.dumps({'image_id': image['id'], 'sizes': [800, 400, 200]})
-    )
-    ch.basic_ack(delivery_tag=method.delivery_tag)
+  // Service 1: Upload handler
+  uploadChannel.consume('images.upload', async (msg) => {
+    if (!msg) {
+      return;
+    }
 
-# Service 2: Resizer
-def on_resize(ch, method, properties, body):
-    data = json.loads(body)
+    const image = JSON.parse(msg.content.toString());
 
-    for size in data['sizes']:
-        resized = resize_image(data['image_id'], size)
-        save_to_s3(resized, f'resized/{size}/')
+    // Сохранить оригинал в S3
+    await saveToS3(image.url, 'originals/');
 
-    # Отправить на watermarking
-    ch.basic_publish(
-        exchange='',
-        routing_key='images.watermark',
-        body=body
-    )
-    ch.basic_ack(delivery_tag=method.delivery_tag)
+    // Отправить на resize
+    await uploadChannel.sendToQueue(
+      'images.resize',
+      Buffer.from(
+        JSON.stringify({
+          imageId: image.id,
+          sizes: [800, 400, 200],
+        }),
+      ),
+      { persistent: true },
+    );
 
-# Service 3: Watermark
-def on_watermark(ch, method, properties, body):
-    data = json.loads(body)
-    add_watermark(data['image_id'])
+    uploadChannel.ack(msg);
+  });
 
-    # Финальная публикация
-    ch.basic_publish(
-        exchange='',
-        routing_key='images.publish',
-        body=body
-    )
-    ch.basic_ack(delivery_tag=method.delivery_tag)
+  // Service 2: Resizer
+  resizeChannel.consume('images.resize', async (msg) => {
+    if (!msg) {
+      return;
+    }
+
+    const data = JSON.parse(msg.content.toString());
+
+    for (const size of data.sizes) {
+      const resized = await resizeImage(data.imageId, size);
+      await saveToS3(resized, `resized/${size}/`);
+    }
+
+    // Отправить на watermarking
+    await resizeChannel.sendToQueue('images.watermark', msg.content, { persistent: true });
+    resizeChannel.ack(msg);
+  });
+
+  // Service 3: Watermark
+  watermarkChannel.consume('images.watermark', async (msg) => {
+    if (!msg) {
+      return;
+    }
+
+    const data = JSON.parse(msg.content.toString());
+    await addWatermark(data.imageId);
+
+    // Финальная публикация
+    await watermarkChannel.sendToQueue('images.publish', msg.content, { persistent: true });
+    watermarkChannel.ack(msg);
+  });
+}
+
+setupImagePipeline().catch(console.error);
 ```
 
 ### 4. Priority Queue (RabbitMQ)
 
-```python
-# Очередь с приоритетами
-channel.queue_declare(
-    queue='tasks',
-    arguments={'x-max-priority': 10}
-)
+```javascript
+async function priorityQueueDemo() {
+  const connection = await amqp.connect('amqp://localhost');
+  const channel = await connection.createChannel();
 
-# Отправка с приоритетом
-channel.basic_publish(
-    exchange='',
-    routing_key='tasks',
-    body='Critical task',
-    properties=pika.BasicProperties(priority=10)
-)
+  // Очередь с приоритетами
+  await channel.assertQueue('tasks', {
+    durable: true,
+    arguments: { 'x-max-priority': 10 },
+  });
 
-channel.basic_publish(
-    exchange='',
-    routing_key='tasks',
-    body='Normal task',
-    properties=pika.BasicProperties(priority=5)
-)
+  // Отправка с приоритетом
+  channel.sendToQueue('tasks', Buffer.from('Critical task'), {
+    priority: 10,
+    persistent: true,
+  });
 
-channel.basic_publish(
-    exchange='',
-    routing_key='tasks',
-    body='Low priority task',
-    properties=pika.BasicProperties(priority=1)
-)
+  channel.sendToQueue('tasks', Buffer.from('Normal task'), {
+    priority: 5,
+    persistent: true,
+  });
 
-# Consumer обработает в порядке: 10 → 5 → 1
+  channel.sendToQueue('tasks', Buffer.from('Low priority task'), {
+    priority: 1,
+    persistent: true,
+  });
+
+  await channel.close();
+  await connection.close();
+
+  // Consumer обработает в порядке: 10 → 5 → 1
+}
+
+priorityQueueDemo().catch(console.error);
 ```
 
 ### 5. Delay Queue (SQS)
 
-```python
-# Отложенная отправка (до 15 минут в SQS)
-sqs.send_message(
-    QueueUrl=queue_url,
-    MessageBody='Reminder: meeting in 15 min',
-    DelaySeconds=900  # 15 минут
-)
+```javascript
+// Отложенная отправка (до 15 минут в SQS)
+await sqs.send(
+  new SendMessageCommand({
+    QueueUrl: queueUrl,
+    MessageBody: 'Reminder: meeting in 15 min',
+    DelaySeconds: 900, // 15 минут
+  }),
+);
 
-# Для больших задержек: использовать visibility timeout или SNS + Lambda
+// Для больших задержек: использовать visibility timeout или SNS + Lambda
 ```
 
 ## Мониторинг и отладка
@@ -729,148 +849,177 @@ rabbitmqctl list_bindings
 
 ### SQS CloudWatch Metrics
 
-```python
-import boto3
+```javascript
+const {
+  CloudWatchClient,
+  GetMetricStatisticsCommand,
+  PutMetricAlarmCommand,
+} = require('@aws-sdk/client-cloudwatch');
 
-cloudwatch = boto3.client('cloudwatch')
+const cloudwatch = new CloudWatchClient({ region: 'us-east-1' });
 
-# Получить метрики
-response = cloudwatch.get_metric_statistics(
-    Namespace='AWS/SQS',
-    MetricName='ApproximateNumberOfMessagesVisible',
-    Dimensions=[
-        {'Name': 'QueueName', 'Value': 'my-queue'}
-    ],
-    StartTime=datetime.utcnow() - timedelta(hours=1),
-    EndTime=datetime.utcnow(),
-    Period=300,
-    Statistics=['Average', 'Maximum']
-)
+async function configureCloudWatch(queueName) {
+  // Получить метрики
+  const metrics = await cloudwatch.send(
+    new GetMetricStatisticsCommand({
+      Namespace: 'AWS/SQS',
+      MetricName: 'ApproximateNumberOfMessagesVisible',
+      Dimensions: [{ Name: 'QueueName', Value: queueName }],
+      StartTime: new Date(Date.now() - 60 * 60 * 1000), // 1 час назад
+      EndTime: new Date(),
+      Period: 300,
+      Statistics: ['Average', 'Maximum'],
+    }),
+  );
 
-# Alarm на старые сообщения
-cloudwatch.put_metric_alarm(
-    AlarmName='SQS-OldMessages',
-    MetricName='ApproximateAgeOfOldestMessage',
-    Namespace='AWS/SQS',
-    Statistic='Maximum',
-    Period=300,
-    EvaluationPeriods=1,
-    Threshold=3600,  # 1 час
-    ComparisonOperator='GreaterThanThreshold',
-    Dimensions=[
-        {'Name': 'QueueName', 'Value': 'my-queue'}
-    ]
-)
+  console.log(metrics.Datapoints);
+
+  // Alarm на старые сообщения
+  await cloudwatch.send(
+    new PutMetricAlarmCommand({
+      AlarmName: 'SQS-OldMessages',
+      MetricName: 'ApproximateAgeOfOldestMessage',
+      Namespace: 'AWS/SQS',
+      Statistic: 'Maximum',
+      Period: 300,
+      EvaluationPeriods: 1,
+      Threshold: 3600, // 1 час
+      ComparisonOperator: 'GreaterThanThreshold',
+      Dimensions: [{ Name: 'QueueName', Value: queueName }],
+    }),
+  );
+}
+
+configureCloudWatch('my-queue').catch(console.error);
 ```
 
 ## Паттерны отказоустойчивости
 
 ### Idempotent Consumer
 
-```python
-import redis
+```javascript
+const Redis = require('ioredis');
 
-redis_client = redis.Redis()
+const redisClient = new Redis();
 
-def process_message_idempotently(message_id, message_body):
-    # Проверка, не обработано ли уже
-    if redis_client.exists(f'processed:{message_id}'):
-        print(f"Message {message_id} already processed")
-        return
+async function processMessageIdempotently(messageId, messageBody) {
+  // Проверка, не обработано ли уже
+  const alreadyProcessed = await redisClient.exists(`processed:${messageId}`);
+  if (alreadyProcessed) {
+    console.log(`Message ${messageId} already processed`);
+    return;
+  }
 
-    # Обработка
-    result = process(message_body)
+  // Обработка
+  const result = await process(messageBody);
 
-    # Пометка как обработанного (с TTL)
-    redis_client.setex(
-        f'processed:{message_id}',
-        86400,  # 24 часа
-        'true'
-    )
+  // Пометка как обработанного (с TTL)
+  await redisClient.set(`processed:${messageId}`, 'true', 'EX', 86400); // 24 часа
 
-    return result
+  return result;
+}
 ```
 
 ### Circuit Breaker для Consumer
 
-```python
-from datetime import datetime, timedelta
+```javascript
+class CircuitBreaker {
+  constructor({ failureThreshold = 5, timeoutSeconds = 60 } = {}) {
+    this.failureThreshold = failureThreshold;
+    this.timeoutSeconds = timeoutSeconds;
+    this.failures = 0;
+    this.lastFailureTime = null;
+    this.state = 'closed'; // closed, open, half-open
+  }
 
-class CircuitBreaker:
-    def __init__(self, failure_threshold=5, timeout=60):
-        self.failure_threshold = failure_threshold
-        self.timeout = timeout
-        self.failures = 0
-        self.last_failure_time = None
-        self.state = 'closed'  # closed, open, half-open
+  async call(fn) {
+    if (this.state === 'open') {
+      const diff = (Date.now() - this.lastFailureTime) / 1000;
+      if (diff > this.timeoutSeconds) {
+        this.state = 'half-open';
+      } else {
+        throw new Error('Circuit breaker is OPEN');
+      }
+    }
 
-    def call(self, func, *args, **kwargs):
-        if self.state == 'open':
-            if datetime.now() - self.last_failure_time > timedelta(seconds=self.timeout):
-                self.state = 'half-open'
-            else:
-                raise Exception("Circuit breaker is OPEN")
+    try {
+      const result = await fn();
+      if (this.state === 'half-open') {
+        this.state = 'closed';
+        this.failures = 0;
+      }
+      return result;
+    } catch (error) {
+      this.failures += 1;
+      this.lastFailureTime = Date.now();
 
-        try:
-            result = func(*args, **kwargs)
-            if self.state == 'half-open':
-                self.state = 'closed'
-                self.failures = 0
-            return result
-        except Exception as e:
-            self.failures += 1
-            self.last_failure_time = datetime.now()
+      if (this.failures >= this.failureThreshold) {
+        this.state = 'open';
+      }
 
-            if self.failures >= self.failure_threshold:
-                self.state = 'open'
+      throw error;
+    }
+  }
+}
 
-            raise e
+// Использование
+const cb = new CircuitBreaker();
 
-# Использование
-cb = CircuitBreaker()
+async function consumeMessages() {
+  while (true) {
+    const messages = await sqs.send(new ReceiveMessageCommand({ QueueUrl: queueUrl, WaitTimeSeconds: 20 }));
 
-def consume_messages():
-    while True:
-        messages = sqs.receive_message(...)
-        for msg in messages.get('Messages', []):
-            try:
-                cb.call(process_message, msg)
-                sqs.delete_message(...)
-            except Exception as e:
-                print(f"Circuit breaker prevented call: {e}")
-                time.sleep(60)
+    for (const msg of messages.Messages || []) {
+      try {
+        await cb.call(() => processMessage(msg));
+        await sqs.send(
+          new DeleteMessageCommand({
+            QueueUrl: queueUrl,
+            ReceiptHandle: msg.ReceiptHandle,
+          }),
+        );
+      } catch (error) {
+        console.error(`Circuit breaker prevented call: ${error.message}`);
+        await new Promise((resolve) => setTimeout(resolve, 60_000));
+      }
+    }
+  }
+}
 ```
 
 ### Retry with Exponential Backoff
 
-```python
-import time
-from functools import wraps
+```javascript
+function retryWithBackoff(fn, { maxRetries = 3, baseDelayMs = 1000, maxDelayMs = 60_000 } = {}) {
+  return async (...args) => {
+    for (let attempt = 0; attempt < maxRetries; attempt += 1) {
+      try {
+        return await fn(...args);
+      } catch (error) {
+        if (attempt === maxRetries - 1) {
+          throw error;
+        }
 
-def retry_with_backoff(max_retries=3, base_delay=1, max_delay=60):
-    def decorator(func):
-        @wraps(func)
-        def wrapper(*args, **kwargs):
-            for attempt in range(max_retries):
-                try:
-                    return func(*args, **kwargs)
-                except Exception as e:
-                    if attempt == max_retries - 1:
-                        raise
+        const delay = Math.min(baseDelayMs * 2 ** attempt, maxDelayMs);
+        console.warn(`Attempt ${attempt + 1} failed: ${error.message}. Retrying in ${delay}ms...`);
+        await new Promise((resolve) => setTimeout(resolve, delay));
+      }
+    }
+  };
+}
 
-                    delay = min(base_delay * (2 ** attempt), max_delay)
-                    print(f"Attempt {attempt + 1} failed: {e}. Retrying in {delay}s...")
-                    time.sleep(delay)
-        return wrapper
-    return decorator
+const sendToQueue = retryWithBackoff(async (message) => {
+  const connection = await amqp.connect('amqp://localhost');
+  const channel = await connection.createChannel();
 
-@retry_with_backoff(max_retries=5)
-def send_to_queue(message):
-    channel.basic_publish(
-        exchange='',
-        routing_key='task_queue',
-        body=message
-    )
+  try {
+    await channel.assertQueue('task_queue', { durable: true });
+    channel.sendToQueue('task_queue', Buffer.from(message), { persistent: true });
+  } finally {
+    await channel.close();
+    await connection.close();
+  }
+}, { maxRetries: 5 });
 ```
 
 ## Когда использовать что?
@@ -895,39 +1044,56 @@ def send_to_queue(message):
 
 ### Комбинирование
 
-```python
-# SNS (pub-sub) → SQS (queue) → Lambda (processing)
-import boto3
+```javascript
+// SNS (pub-sub) → SQS (queue) → Lambda (processing)
+const {
+  SNSClient,
+  CreateTopicCommand,
+  PublishCommand,
+  SubscribeCommand,
+} = require('@aws-sdk/client-sns');
 
-sns = boto3.client('sns')
-sqs = boto3.client('sqs')
+const snsClient = new SNSClient({ region: 'us-east-1' });
 
-# Создать топик
-topic = sns.create_topic(Name='orders')
+async function fanoutOrders() {
+  // Создать топик
+  const topic = await snsClient.send(new CreateTopicCommand({ Name: 'orders' }));
 
-# Создать очереди для разных сервисов
-inventory_queue = sqs.create_queue(QueueName='inventory-service')
-email_queue = sqs.create_queue(QueueName='email-service')
-analytics_queue = sqs.create_queue(QueueName='analytics-service')
+  // Создать очереди для разных сервисов
+  const inventoryQueue = await sqs.send(new CreateQueueCommand({ QueueName: 'inventory-service' }));
+  const emailQueue = await sqs.send(new CreateQueueCommand({ QueueName: 'email-service' }));
+  const analyticsQueue = await sqs.send(new CreateQueueCommand({ QueueName: 'analytics-service' }));
 
-# Подписать очереди на топик
-for queue in [inventory_queue, email_queue, analytics_queue]:
-    queue_arn = sqs.get_queue_attributes(
-        QueueUrl=queue['QueueUrl'],
-        AttributeNames=['QueueArn']
-    )['Attributes']['QueueArn']
+  const queues = [inventoryQueue, emailQueue, analyticsQueue];
 
-    sns.subscribe(
-        TopicArn=topic['TopicArn'],
-        Protocol='sqs',
-        Endpoint=queue_arn
-    )
+  // Подписать очереди на топик
+  for (const queue of queues) {
+    const attrs = await sqs.send(
+      new GetQueueAttributesCommand({
+        QueueUrl: queue.QueueUrl,
+        AttributeNames: ['QueueArn'],
+      }),
+    );
 
-# Публикация в топик → все очереди получат сообщение
-sns.publish(
-    TopicArn=topic['TopicArn'],
-    Message=json.dumps({'order_id': '12345', 'total': 99.99})
-)
+    await snsClient.send(
+      new SubscribeCommand({
+        TopicArn: topic.TopicArn,
+        Protocol: 'sqs',
+        Endpoint: attrs.Attributes.QueueArn,
+      }),
+    );
+  }
+
+  // Публикация в топик → все очереди получат сообщение
+  await snsClient.send(
+    new PublishCommand({
+      TopicArn: topic.TopicArn,
+      Message: JSON.stringify({ order_id: '12345', total: 99.99 }),
+    }),
+  );
+}
+
+fanoutOrders().catch(console.error);
 ```
 
 ## Выводы

@@ -235,19 +235,21 @@ App → Write
 
 Пишем в cache, асинхронно flush в database.
 
-```python
-def update_data(key, value):
-    # 1. Write to cache (fast)
-    cache.set(key, value)
+```javascript
+async function updateData(key, value) {
+  // 1. Write to cache (fast)
+  cache.set(key, value);
 
-    # 2. Queue для async DB write
-    queue.enqueue('flush_to_db', key, value)
+  // 2. Queue для async DB write
+  queue.enqueue('flush_to_db', { key, value });
 
-    return value
+  return value;
+}
 
-# Background worker
-def flush_to_db(key, value):
-    database.update(key, value)
+// Background worker
+async function flushToDb({ key, value }) {
+  await database.update(key, value);
+}
 ```
 
 **Diagram**:
@@ -273,28 +275,32 @@ App → Write to Cache (fast)
 
 Proactively обновляем cache до expiration.
 
-```python
-def get_data(key):
-    data = cache.get(key)
+```javascript
+async function getData(key) {
+  const data = await cache.get(key);
 
-    if data:
-        # Check if close to expiration
-        ttl = cache.ttl(key)
-        if ttl < 300:  # < 5 minutes
-            # Refresh asynchronously
-            queue.enqueue('refresh_cache', key)
+  if (data) {
+    // Check if close to expiration
+    const ttl = await cache.ttl(key);
+    if (ttl < 300) {
+      // Refresh asynchronously
+      queue.enqueue('refresh_cache', { key });
+    }
 
-        return data
+    return data;
+  }
 
-    # Cache miss
-    data = database.query(key)
-    cache.set(key, data, ttl=3600)
-    return data
+  // Cache miss
+  const fresh = await database.query(key);
+  await cache.set(key, fresh, { ttl: 3600 });
+  return fresh;
+}
 
-# Background worker
-def refresh_cache(key):
-    data = database.query(key)
-    cache.set(key, data, ttl=3600)
+// Background worker
+async function refreshCache({ key }) {
+  const data = await database.query(key);
+  await cache.set(key, data, { ttl: 3600 });
+}
 ```
 
 **Преимущества**:
@@ -315,40 +321,48 @@ def refresh_cache(key):
 
 **Принцип**: Удаляем данные, которые дольше всех не использовались.
 
-```python
-from collections import OrderedDict
+```javascript
+class LRUCache {
+  constructor(capacity) {
+    this.capacity = capacity;
+    this.cache = new Map();
+  }
 
-class LRUCache:
-    def __init__(self, capacity):
-        self.cache = OrderedDict()
-        self.capacity = capacity
+  get(key) {
+    if (!this.cache.has(key)) {
+      return null;
+    }
 
-    def get(self, key):
-        if key not in self.cache:
-            return None
+    // Move to end (mark as recently used)
+    const value = this.cache.get(key);
+    this.cache.delete(key);
+    this.cache.set(key, value);
+    return value;
+  }
 
-        # Move to end (mark as recently used)
-        self.cache.move_to_end(key)
-        return self.cache[key]
+  set(key, value) {
+    if (this.cache.has(key)) {
+      // Update and move to end
+      this.cache.delete(key);
+    }
 
-    def set(self, key, value):
-        if key in self.cache:
-            # Update and move to end
-            self.cache.move_to_end(key)
+    this.cache.set(key, value);
 
-        self.cache[key] = value
+    if (this.cache.size > this.capacity) {
+      // Evict least recently used (first item)
+      const lruKey = this.cache.keys().next().value;
+      this.cache.delete(lruKey);
+    }
+  }
+}
 
-        if len(self.cache) > self.capacity:
-            # Evict least recently used (first item)
-            self.cache.popitem(last=False)
-
-# Usage
-cache = LRUCache(capacity=3)
-cache.set('a', 1)
-cache.set('b', 2)
-cache.set('c', 3)
-cache.get('a')  # Access 'a'
-cache.set('d', 4)  # Evicts 'b' (least recently used)
+// Usage
+const cache = new LRUCache(3);
+cache.set('a', 1);
+cache.set('b', 2);
+cache.set('c', 3);
+cache.get('a'); // Access 'a'
+cache.set('d', 4); // Evicts 'b' (least recently used)
 ```
 
 **Преимущества**:
@@ -365,54 +379,76 @@ cache.set('d', 4)  # Evicts 'b' (least recently used)
 
 **Принцип**: Удаляем данные, которые реже всего использовались.
 
-```python
-from collections import defaultdict
-import heapq
+```javascript
+class LFUCache {
+  constructor(capacity) {
+    this.capacity = capacity;
+    this.cache = new Map(); // key → { value, freq }
+    this.freqMap = new Map(); // frequency → Set of keys
+    this.minFreq = 0;
+  }
 
-class LFUCache:
-    def __init__(self, capacity):
-        self.capacity = capacity
-        self.cache = {}  # key → (value, frequency)
-        self.freq_map = defaultdict(set)  # frequency → keys
-        self.min_freq = 0
+  get(key) {
+    if (!this.cache.has(key)) {
+      return null;
+    }
 
-    def get(self, key):
-        if key not in self.cache:
-            return None
+    const entry = this.cache.get(key);
+    this._updateFrequency(key, entry);
+    return entry.value;
+  }
 
-        value, freq = self.cache[key]
+  set(key, value) {
+    if (this.capacity === 0) {
+      return;
+    }
 
-        # Remove from current frequency
-        self.freq_map[freq].remove(key)
-        if not self.freq_map[freq] and freq == self.min_freq:
-            self.min_freq += 1
+    if (this.cache.has(key)) {
+      const entry = this.cache.get(key);
+      entry.value = value;
+      this._updateFrequency(key, entry);
+      return;
+    }
 
-        # Increment frequency
-        self.cache[key] = (value, freq + 1)
-        self.freq_map[freq + 1].add(key)
+    if (this.cache.size >= this.capacity) {
+      const keys = this.freqMap.get(this.minFreq);
+      const evictKey = keys.values().next().value;
+      keys.delete(evictKey);
+      if (keys.size === 0) {
+        this.freqMap.delete(this.minFreq);
+      }
+      this.cache.delete(evictKey);
+    }
 
-        return value
+    const entry = { value, freq: 1 };
+    this.cache.set(key, entry);
 
-    def set(self, key, value):
-        if self.capacity == 0:
-            return
+    if (!this.freqMap.has(1)) {
+      this.freqMap.set(1, new Set());
+    }
+    this.freqMap.get(1).add(key);
+    this.minFreq = 1;
+  }
 
-        if key in self.cache:
-            # Update value and increment frequency
-            _, freq = self.cache[key]
-            self.cache[key] = (value, freq)
-            self.get(key)  # Increment freq
-            return
+  _updateFrequency(key, entry) {
+    const { freq } = entry;
+    const keys = this.freqMap.get(freq);
+    keys.delete(key);
+    if (keys.size === 0) {
+      this.freqMap.delete(freq);
+      if (this.minFreq === freq) {
+        this.minFreq += 1;
+      }
+    }
 
-        if len(self.cache) >= self.capacity:
-            # Evict least frequently used
-            evict_key = self.freq_map[self.min_freq].pop()
-            del self.cache[evict_key]
+    entry.freq += 1;
 
-        # Add new key
-        self.cache[key] = (value, 1)
-        self.freq_map[1].add(key)
-        self.min_freq = 1
+    if (!this.freqMap.has(entry.freq)) {
+      this.freqMap.set(entry.freq, new Set());
+    }
+    this.freqMap.get(entry.freq).add(key);
+  }
+}
 ```
 
 **Преимущества**:
@@ -428,28 +464,32 @@ class LFUCache:
 
 **Принцип**: Удаляем самые старые данные.
 
-```python
-from collections import deque
+```javascript
+class FIFOCache {
+  constructor(capacity) {
+    this.capacity = capacity;
+    this.cache = new Map();
+    this.queue = [];
+  }
 
-class FIFOCache:
-    def __init__(self, capacity):
-        self.capacity = capacity
-        self.cache = {}
-        self.queue = deque()
+  get(key) {
+    return this.cache.has(key) ? this.cache.get(key) : null;
+  }
 
-    def get(self, key):
-        return self.cache.get(key)
+  set(key, value) {
+    if (!this.cache.has(key)) {
+      if (this.cache.size >= this.capacity) {
+        // Evict oldest
+        const evictKey = this.queue.shift();
+        this.cache.delete(evictKey);
+      }
 
-    def set(self, key, value):
-        if key not in self.cache:
-            if len(self.cache) >= self.capacity:
-                # Evict oldest
-                evict_key = self.queue.popleft()
-                del self.cache[evict_key]
+      this.queue.push(key);
+    }
 
-            self.queue.append(key)
-
-        self.cache[key] = value
+    this.cache.set(key, value);
+  }
+}
 ```
 
 **Преимущества**:
@@ -464,21 +504,25 @@ class FIFOCache:
 
 **Принцип**: Удаляем случайный item.
 
-```python
-import random
+```javascript
+class RandomCache {
+  constructor(capacity) {
+    this.capacity = capacity;
+    this.cache = new Map();
+  }
 
-class RandomCache:
-    def __init__(self, capacity):
-        self.capacity = capacity
-        self.cache = {}
+  set(key, value) {
+    if (this.cache.size >= this.capacity) {
+      // Evict random
+      const keys = Array.from(this.cache.keys());
+      const evictIndex = Math.floor(Math.random() * keys.length);
+      const evictKey = keys[evictIndex];
+      this.cache.delete(evictKey);
+    }
 
-    def set(self, key, value):
-        if len(self.cache) >= self.capacity:
-            # Evict random
-            evict_key = random.choice(list(self.cache.keys()))
-            del self.cache[evict_key]
-
-        self.cache[key] = value
+    this.cache.set(key, value);
+  }
+}
 ```
 
 **Преимущества**:
@@ -493,29 +537,33 @@ class RandomCache:
 
 **Принцип**: Данные expiring автоматически.
 
-```python
-import time
+```javascript
+class TTLCache {
+  constructor() {
+    this.cache = new Map(); // key → { value, expiryTime }
+  }
 
-class TTLCache:
-    def __init__(self):
-        self.cache = {}  # key → (value, expiry_time)
+  set(key, value, ttlSeconds) {
+    const expiryTime = Date.now() + ttlSeconds * 1000;
+    this.cache.set(key, { value, expiryTime });
+  }
 
-    def set(self, key, value, ttl):
-        expiry = time.time() + ttl
-        self.cache[key] = (value, expiry)
+  get(key) {
+    const entry = this.cache.get(key);
+    if (!entry) {
+      return null;
+    }
 
-    def get(self, key):
-        if key not in self.cache:
-            return None
+    const { value, expiryTime } = entry;
+    if (Date.now() > expiryTime) {
+      // Expired
+      this.cache.delete(key);
+      return null;
+    }
 
-        value, expiry = self.cache[key]
-
-        if time.time() > expiry:
-            # Expired
-            del self.cache[key]
-            return None
-
-        return value
+    return value;
+  }
+}
 ```
 
 **Преимущества**:
@@ -555,8 +603,8 @@ Policies:
 
 #### 1. TTL (Time-based)
 
-```python
-cache.setex('user:123', 3600, user_data)  # Expire in 1 hour
+```javascript
+await cache.set('user:123', userData, { ttl: 3600 }); // Expire in 1 hour
 ```
 
 **Преимущества**: Простота
@@ -564,10 +612,11 @@ cache.setex('user:123', 3600, user_data)  # Expire in 1 hour
 
 #### 2. Explicit Invalidation
 
-```python
-def update_user(user_id, data):
-    db.update(user_id, data)
-    cache.delete(f"user:{user_id}")  # Invalidate
+```javascript
+async function updateUser(userId, data) {
+  await db.update(userId, data);
+  await cache.delete(`user:${userId}`); // Invalidate
+}
 ```
 
 **Преимущества**: Immediate consistency
@@ -575,10 +624,11 @@ def update_user(user_id, data):
 
 #### 3. Write-Through
 
-```python
-def update_user(user_id, data):
-    db.update(user_id, data)
-    cache.set(f"user:{user_id}", data)  # Update cache
+```javascript
+async function updateUserWriteThrough(userId, data) {
+  await db.update(userId, data);
+  await cache.set(`user:${userId}`, data); // Update cache
+}
 ```
 
 **Преимущества**: Cache always fresh
@@ -586,25 +636,28 @@ def update_user(user_id, data):
 
 #### 4. Event-driven Invalidation
 
-```python
-# Pub/Sub
-def update_user(user_id, data):
-    db.update(user_id, data)
-    pubsub.publish('user_updated', {'user_id': user_id})
+```javascript
+// Pub/Sub
+async function updateUserEventDriven(userId, data) {
+  await db.update(userId, data);
+  pubsub.publish('user_updated', { userId });
+}
 
-# Subscriber (на всех app servers)
-pubsub.subscribe('user_updated', lambda msg: cache.delete(f"user:{msg['user_id']}"))
+// Subscriber (на всех app servers)
+pubsub.subscribe('user_updated', async (message) => {
+  await cache.delete(`user:${message.userId}`);
+});
 ```
 
 #### 5. Cache Tags
 
-```python
-# Tagging
-cache.set('user:123', data, tags=['users', 'user:123'])
-cache.set('post:456', data, tags=['posts', 'user:123'])
+```javascript
+// Tagging
+cache.set('user:123', data, { tags: ['users', 'user:123'] });
+cache.set('post:456', data, { tags: ['posts', 'user:123'] });
 
-# Invalidate by tag
-cache.invalidate_tag('user:123')  # Invalidates user и все его posts
+// Invalidate by tag
+cache.invalidateTag('user:123'); // Invalidates user и все его posts
 ```
 
 ## Cache Stampede (Thundering Herd)
@@ -624,109 +677,154 @@ All miss cache
 
 #### 1. Locking
 
-```python
-import threading
+```javascript
+class Mutex {
+  constructor() {
+    this.locked = false;
+    this.queue = [];
+  }
 
-locks = {}
+  async acquire() {
+    if (!this.locked) {
+      this.locked = true;
+      return;
+    }
 
-def get_user(user_id):
-    cache_key = f"user:{user_id}"
+    return new Promise((resolve) => {
+      this.queue.push(resolve);
+    }).then(() => {
+      this.locked = true;
+    });
+  }
 
-    # Check cache
-    data = cache.get(cache_key)
-    if data:
-        return data
+  release() {
+    if (this.queue.length > 0) {
+      const next = this.queue.shift();
+      next();
+    } else {
+      this.locked = false;
+    }
+  }
+}
 
-    # Acquire lock
-    lock_key = f"lock:{cache_key}"
-    if lock_key not in locks:
-        locks[lock_key] = threading.Lock()
+const locks = new Map();
 
-    with locks[lock_key]:
-        # Double-check cache (другой thread мог заполнить)
-        data = cache.get(cache_key)
-        if data:
-            return data
+async function getUser(userId) {
+  const cacheKey = `user:${userId}`;
 
-        # Query database
-        data = db.query(user_id)
-        cache.set(cache_key, data, ttl=3600)
-        return data
+  // Check cache
+  const cached = await cache.get(cacheKey);
+  if (cached) {
+    return cached;
+  }
+
+  // Acquire lock
+  const lockKey = `lock:${cacheKey}`;
+  if (!locks.has(lockKey)) {
+    locks.set(lockKey, new Mutex());
+  }
+
+  const mutex = locks.get(lockKey);
+  await mutex.acquire();
+
+  try {
+    // Double-check cache (другой worker мог заполнить)
+    const cachedAgain = await cache.get(cacheKey);
+    if (cachedAgain) {
+      return cachedAgain;
+    }
+
+    // Query database
+    const data = await db.query(userId);
+    await cache.set(cacheKey, data, { ttl: 3600 });
+    return data;
+  } finally {
+    mutex.release();
+  }
+}
 ```
 
 #### 2. Probabilistic Early Expiration
 
-```python
-import random
+```javascript
+async function getUserWithProbabilisticRefresh(userId) {
+  const cacheKey = `user:${userId}`;
+  const data = await cache.get(cacheKey);
 
-def get_user(user_id):
-    cache_key = f"user:{user_id}"
-    data = cache.get(cache_key)
+  if (data) {
+    const ttl = await cache.ttl(cacheKey);
+    // Вероятность refresh увеличивается near expiration
+    if (Math.random() < (3600 - ttl) / 3600) {
+      // Refresh асинхронно
+      queue.enqueue('refresh_cache', { cacheKey });
+    }
 
-    if data:
-        ttl = cache.ttl(cache_key)
-        # Вероятность refresh увеличивается near expiration
-        if random.random() < (3600 - ttl) / 3600:
-            # Refresh асинхронно
-            queue.enqueue('refresh_cache', cache_key)
+    return data;
+  }
 
-        return data
-
-    # Cache miss
-    data = db.query(user_id)
-    cache.set(cache_key, data, ttl=3600)
-    return data
+  // Cache miss
+  const fresh = await db.query(userId);
+  await cache.set(cacheKey, fresh, { ttl: 3600 });
+  return fresh;
+}
 ```
 
 #### 3. Serving Stale While Revalidate
 
-```python
-def get_user(user_id):
-    cache_key = f"user:{user_id}"
-    data = cache.get(cache_key)
+```javascript
+async function getUserServingStale(userId) {
+  const cacheKey = `user:${userId}`;
+  const data = await cache.get(cacheKey);
 
-    if data:
-        ttl = cache.ttl(cache_key)
-        if ttl < 0:
-            # Expired, но serve stale
-            queue.enqueue('refresh_cache', cache_key)
-            return data  # Stale data
+  if (data) {
+    const ttl = await cache.ttl(cacheKey);
+    if (ttl < 0) {
+      // Expired, но serve stale
+      queue.enqueue('refresh_cache', { cacheKey });
+      return data; // Stale data
+    }
 
-        return data
+    return data;
+  }
 
-    # Cache miss
-    data = db.query(user_id)
-    cache.set(cache_key, data, ttl=3600)
-    return data
+  // Cache miss
+  const fresh = await db.query(userId);
+  await cache.set(cacheKey, fresh, { ttl: 3600 });
+  return fresh;
+}
 ```
 
 ## Cache Warming
 
 **Preload cache** перед traffic.
 
-```python
-def warm_cache():
-    # Popular items
-    popular_users = db.query("SELECT id FROM users ORDER BY popularity DESC LIMIT 1000")
+```javascript
+async function warmCache() {
+  // Popular items
+  const popularUsers = await db.query('SELECT id FROM users ORDER BY popularity DESC LIMIT 1000');
 
-    for user in popular_users:
-        data = db.query(user.id)
-        cache.set(f"user:{user.id}", data, ttl=3600)
+  for (const user of popularUsers) {
+    const data = await db.query(user.id);
+    await cache.set(`user:${user.id}`, data, { ttl: 3600 });
+  }
+}
 
-# Deploy script
-warm_cache()
-# Start serving traffic
+// Deploy script
+(async () => {
+  await warmCache();
+  // Start serving traffic
+})();
 ```
 
 ## Monitoring Cache
 
 ### Metrics
 
-```python
-# Cache hit rate
-hit_rate = cache_hits / (cache_hits + cache_misses)
+```javascript
+// Cache hit rate
+const hitRate = cacheHits / (cacheHits + cacheMisses);
 
-# Target: > 80%
+// Target: > 80%
 ```
 
 **Other metrics**:
@@ -758,60 +856,63 @@ IF latency P99 > 10ms THEN ALERT
 
 ### 1. Cache только expensive operations
 
-```python
-# Don't cache
-simple_data = {"key": "value"}  # Already fast
+```javascript
+// Don't cache
+const simpleData = { key: 'value' }; // Already fast
 
-# DO cache
-user_data = db.query("SELECT ... JOIN ... WHERE ...")  # Expensive
+// DO cache
+const userData = await db.query('SELECT ... JOIN ... WHERE ...'); // Expensive
 ```
 
 ### 2. Set appropriate TTL
 
-```python
-# Frequently changing: short TTL
-cache.setex('stock_price', 60, price)  # 1 min
+```javascript
+// Frequently changing: short TTL
+await cache.set('stock_price', price, { ttl: 60 }); // 1 min
 
-# Rarely changing: long TTL
-cache.setex('user_profile', 3600, profile)  # 1 hour
+// Rarely changing: long TTL
+await cache.set('user_profile', profile, { ttl: 3600 }); // 1 hour
 
-# Static: very long TTL
-cache.setex('product_catalog', 86400, catalog)  # 24 hours
+// Static: very long TTL
+await cache.set('product_catalog', catalog, { ttl: 86400 }); // 24 hours
 ```
 
 ### 3. Namespace keys
 
-```python
-# Good
-cache.set('user:123', data)
-cache.set('post:456', data)
+```javascript
+// Good
+await cache.set('user:123', data);
+await cache.set('post:456', data);
 
-# Bad
-cache.set('123', data)  # Ambiguous
+// Bad
+await cache.set('123', data); // Ambiguous
 ```
 
 ### 4. Handle cache failures gracefully
 
-```python
-def get_user(user_id):
-    try:
-        data = cache.get(f"user:{user_id}")
-        if data:
-            return data
-    except CacheError:
-        # Cache down, continue without it
-        pass
+```javascript
+async function getUserSafe(userId) {
+  try {
+    const data = await cache.get(`user:${userId}`);
+    if (data) {
+      return data;
+    }
+  } catch (error) {
+    // Cache down, continue без cache
+    console.warn('Cache unavailable', error);
+  }
 
-    # Fallback на database
-    return db.query(user_id)
+  // Fallback на database
+  return db.query(userId);
+}
 ```
 
 ### 5. Version cache keys
 
-```python
-# Schema change → old cache incompatible
-# Solution: version в key
-cache.set('user:v2:123', data)
+```javascript
+// Schema change → old cache incompatible
+// Solution: version в key
+await cache.set('user:v2:123', data);
 ```
 
 ## Что почитать дальше

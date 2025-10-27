@@ -9,27 +9,29 @@ Async Workers (асинхронные воркеры) — это паттерн 
 **Зачем нужны воркеры?**
 
 Без воркеров:
-```python
-@app.post("/signup")
-def signup(email, password):
-    user = create_user(email, password)        # 50ms
-    send_welcome_email(email)                  # 2000ms ❌
-    generate_thumbnail(user.avatar)            # 500ms ❌
-    update_analytics(user)                     # 300ms ❌
-    notify_crm(user)                           # 400ms ❌
-    return {"user_id": user.id}                # Total: 3250ms
+```javascript
+app.post('/signup', async (req, res) => {
+  const { email, password } = req.body;
+  const user = await createUser(email, password); // 50ms
+  await sendWelcomeEmail(email); // 2000ms ❌
+  await generateThumbnail(user.avatar); // 500ms ❌
+  await updateAnalytics(user); // 300ms ❌
+  await notifyCrm(user); // 400ms ❌
+  res.json({ userId: user.id }); // Total: 3250ms
+});
 ```
 
 С воркерами:
-```python
-@app.post("/signup")
-def signup(email, password):
-    user = create_user(email, password)        # 50ms
-    send_welcome_email.delay(email)            # 5ms (в очередь)
-    generate_thumbnail.delay(user.avatar)      # 5ms
-    update_analytics.delay(user)               # 5ms
-    notify_crm.delay(user)                     # 5ms
-    return {"user_id": user.id}                # Total: 70ms ✅
+```javascript
+app.post('/signup', async (req, res) => {
+  const { email, password } = req.body;
+  const user = await createUser(email, password); // 50ms
+  await emailQueue.add('send-welcome', { email }); // 5ms (в очередь)
+  await imageQueue.add('generate-thumbnail', { avatar: user.avatar }); // 5ms
+  await analyticsQueue.add('update-analytics', { user }); // 5ms
+  await crmQueue.add('notify-crm', { user }); // 5ms
+  res.json({ userId: user.id }); // Total: 70ms ✅
+});
 ```
 
 **Основные use cases:**
@@ -66,228 +68,320 @@ Client (Web App) → Broker (Redis/RabbitMQ) → Worker → Result Backend
 pip install celery redis
 ```
 
-```python
-# celery_app.py
-from celery import Celery
+```javascript
+// queues.js
+const { Queue } = require('bullmq');
 
-app = Celery(
-    'myapp',
-    broker='redis://localhost:6379/0',
-    backend='redis://localhost:6379/1'
-)
+const connection = {
+  host: '127.0.0.1',
+  port: 6379,
+};
 
-# Конфигурация
-app.conf.update(
-    task_serializer='json',
-    accept_content=['json'],
-    result_serializer='json',
-    timezone='UTC',
-    enable_utc=True,
-    task_track_started=True,
-    task_time_limit=300,  # 5 минут max
-    worker_prefetch_multiplier=4,
-    worker_max_tasks_per_child=1000,  # Рестарт после 1000 задач
-)
+const emailQueue = new Queue('emails', {
+  connection,
+  defaultJobOptions: {
+    removeOnComplete: true,
+    attempts: 5,
+    backoff: { type: 'exponential', delay: 2000 },
+    timeout: 300_000,
+  },
+});
+
+const imageQueue = new Queue('image-processing', {
+  connection,
+  defaultJobOptions: {
+    removeOnComplete: true,
+    timeout: 600_000,
+  },
+});
+
+const analyticsQueue = new Queue('analytics', { connection });
+const crmQueue = new Queue('crm', { connection });
+
+module.exports = {
+  connection,
+  emailQueue,
+  imageQueue,
+  analyticsQueue,
+  crmQueue,
+};
 ```
 
 ### Базовая задача
 
-```python
-# tasks.py
-from celery_app import app
-import time
+```javascript
+// workers/email-worker.js
+const { Worker } = require('bullmq');
+const { emailQueue, connection } = require('../queues');
 
-@app.task
-def send_email(to, subject, body):
-    print(f"Sending email to {to}...")
-    time.sleep(2)  # Имитация отправки
-    print(f"Email sent to {to}")
-    return f"Email sent to {to}"
+const emailWorker = new Worker(
+  emailQueue.name,
+  async (job) => {
+    const { to, subject, body } = job.data;
+    console.log(`Sending email to ${to}...`);
+    await sendEmail(to, subject, body);
+    console.log(`Email sent to ${to}`);
+    return { to };
+  },
+  { connection },
+);
 
-@app.task
-def add(x, y):
-    return x + y
+module.exports = { emailWorker };
 ```
 
 ### Запуск воркера
 
 ```bash
-# Один воркер с 4 процессами
-celery -A celery_app worker --loglevel=info --concurrency=4
+# Один воркер с concurrency = 4
+CONCURRENCY=4 node workers/email-worker.js
 
-# С autoscale (min=2, max=10)
-celery -A celery_app worker --autoscale=10,2
+# Autoscale можно реализовать через кластер/оркестратор (PM2, Kubernetes HPA)
+# Пример: запуск 2–10 воркеров в Kubernetes Deployment
 
-# С gevent (для I/O-bound задач)
-celery -A celery_app worker --pool=gevent --concurrency=100
+# Высокая I/O-нагрузка — увеличиваем concurrency
+CONCURRENCY=100 node workers/email-worker.js
 ```
 
 ### Вызов задач
 
-```python
-# Асинхронный вызов
-result = send_email.delay('user@example.com', 'Welcome', 'Hello!')
+```javascript
+// Асинхронный вызов
+const job = await emailQueue.add('send-welcome', {
+  to: 'user@example.com',
+  subject: 'Welcome',
+  body: 'Hello!',
+});
 
-# Альтернативный синтаксис
-result = send_email.apply_async(
-    args=['user@example.com', 'Welcome', 'Hello!'],
-    countdown=10  # Выполнить через 10 секунд
-)
+// Альтернативный синтаксис с отложенным стартом
+const delayedJob = await emailQueue.add(
+  'send-welcome',
+  { to: 'user@example.com', subject: 'Welcome', body: 'Hello!' },
+  { delay: 10_000 }, // Выполнить через 10 секунд
+);
 
-# Получение результата
-print(result.id)  # Task ID
-print(result.ready())  # False (ещё выполняется)
-print(result.get(timeout=10))  # Блокирующее ожидание результата
-print(result.status)  # PENDING, STARTED, SUCCESS, FAILURE
+// Получение статуса
+console.log(delayedJob.id); // Task ID
+console.log(await delayedJob.getState()); // waiting, active, completed, failed
+console.log(await delayedJob.isCompleted());
+console.log(await delayedJob.isFailed());
 ```
 
 ### Task Options
 
-```python
-@app.task(
-    bind=True,  # Доступ к self (task instance)
-    name='custom_task_name',
-    max_retries=3,
-    default_retry_delay=60,  # 1 минута
-    time_limit=300,  # Hard limit
-    soft_time_limit=250,  # Soft limit (exception)
-    rate_limit='10/m',  # 10 задач в минуту
-    ignore_result=True,  # Не сохранять результат
-)
-def process_image(self, image_url):
-    try:
-        # Обработка
-        result = download_and_resize(image_url)
-        return result
-    except Exception as exc:
-        # Retry с exponential backoff
-        raise self.retry(exc=exc, countdown=2 ** self.request.retries)
+```javascript
+const imageWorker = new Worker(
+  imageQueue.name,
+  async (job) => {
+    const { imageUrl } = job.data;
+    return processImage(imageUrl);
+  },
+  {
+    connection,
+    concurrency: 5,
+    limiter: {
+      max: 10, // 10 задач в минуту
+      duration: 60_000,
+    },
+  },
+);
+
+await imageQueue.add(
+  'process-image',
+  { imageUrl },
+  {
+    attempts: 3,
+    backoff: { type: 'exponential', delay: 60_000 },
+    timeout: 300_000, // Hard limit
+    jobId: `process-image:${imageUrl}`,
+    removeOnComplete: true,
+  },
+);
 ```
 
 ### Retry механизм
 
-```python
-from celery.exceptions import Reject
+```javascript
+class NonRetryableError extends Error {}
 
-@app.task(bind=True, max_retries=5)
-def fetch_data(self, url):
-    try:
-        response = requests.get(url, timeout=10)
-        response.raise_for_status()
-        return response.json()
+const fetchWorker = new Worker(
+  'fetch-data',
+  async (job) => {
+    const { url } = job.data;
 
-    except requests.RequestException as exc:
-        # Retry с backoff
-        retry_in = 2 ** self.request.retries  # 1, 2, 4, 8, 16 секунд
+    try {
+      const response = await fetch(url, { timeout: 10_000 });
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`);
+      }
 
-        raise self.retry(
-            exc=exc,
-            countdown=retry_in,
-            max_retries=5
-        )
+      return response.json();
+    } catch (error) {
+      if (error instanceof SyntaxError) {
+        // Не retryable ошибка → не переочередь
+        await job.discard();
+        throw new NonRetryableError('Invalid JSON response');
+      }
 
-    except ValueError:
-        # Не retryable ошибка → reject
-        raise Reject('Invalid JSON response', requeue=False)
+      throw error; // BullMQ выполнит повтор с backoff
+    }
+  },
+  {
+    connection,
+    settings: {
+      backoffStrategies: {
+        exponential: (attempts) => Math.min(2 ** attempts * 1000, 16_000),
+      },
+    },
+  },
+);
+
+await fetchQueue.add(
+  'fetch-data',
+  { url: 'https://api.example.com/data' },
+  {
+    attempts: 5,
+    backoff: { type: 'exponential' },
+  },
+);
 ```
 
 ### Chains и Workflows
 
-```python
-from celery import chain, group, chord
+```javascript
+const { FlowProducer } = require('bullmq');
+const flow = new FlowProducer({ connection });
 
-# Chain: последовательное выполнение
-workflow = chain(
-    download_image.s('http://example.com/image.jpg'),
-    resize_image.s(800, 600),
-    upload_to_s3.s('bucket-name')
-)
-result = workflow.apply_async()
+// Chain: последовательное выполнение
+await flow.add({
+  name: 'download-image',
+  queueName: imageQueue.name,
+  data: { url: 'http://example.com/image.jpg' },
+  children: [
+    {
+      name: 'resize-image',
+      queueName: imageQueue.name,
+      data: { width: 800, height: 600 },
+      children: [
+        {
+          name: 'upload-to-s3',
+          queueName: imageQueue.name,
+          data: { bucket: 'bucket-name' },
+        },
+      ],
+    },
+  ],
+});
 
-# Group: параллельное выполнение
-job = group(
-    send_email.s('user1@example.com'),
-    send_email.s('user2@example.com'),
-    send_email.s('user3@example.com')
-)
-result = job.apply_async()
+// Group: параллельное выполнение
+await Promise.all([
+  emailQueue.add('send-email', { to: 'user1@example.com' }),
+  emailQueue.add('send-email', { to: 'user2@example.com' }),
+  emailQueue.add('send-email', { to: 'user3@example.com' }),
+]);
 
-# Chord: group + callback
-callback = group(
-    process_item.s(item) for item in items
-) | aggregate_results.s()
-
-result = callback.apply_async()
+// Chord: group + callback (используем FlowProducer)
+const items = [1, 2, 3, 4, 5];
+await flow.add({
+  name: 'aggregate-results',
+  queueName: analyticsQueue.name,
+  data: {},
+  children: items.map((itemId) => ({
+    name: 'process-item',
+    queueName: analyticsQueue.name,
+    data: { itemId },
+  })),
+});
 ```
 
 ### Пример: Batch Processing
 
-```python
-@app.task
-def process_item(item_id):
-    item = db.get(item_id)
-    result = expensive_computation(item)
-    db.save(result)
-    return result
+```javascript
+const batchWorker = new Worker(
+  analyticsQueue.name,
+  async (job) => {
+    if (job.name === 'process-item') {
+      const item = await db.get(job.data.itemId);
+      const result = await expensiveComputation(item);
+      await db.save(result);
+      return result;
+    }
 
-@app.task
-def aggregate_results(results):
-    total = sum(results)
-    send_notification(f"Batch completed. Total: {total}")
-    return total
+    if (job.name === 'aggregate-results') {
+      const { childrenValues } = job;
+      const total = childrenValues.reduce((sum, value) => sum + value, 0);
+      await sendNotification(`Batch completed. Total: ${total}`);
+      return total;
+    }
 
-# Использование
-items = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+    throw new Error(`Unknown job ${job.name}`);
+  },
+  { connection },
+);
 
-workflow = chord(
-    group(process_item.s(item_id) for item_id in items),
-    aggregate_results.s()
-)
-
-result = workflow.apply_async()
+const items = Array.from({ length: 10 }, (_, i) => i + 1);
+await flow.add({
+  name: 'aggregate-results',
+  queueName: analyticsQueue.name,
+  data: {},
+  children: items.map((itemId) => ({
+    name: 'process-item',
+    queueName: analyticsQueue.name,
+    data: { itemId },
+  })),
+});
 ```
 
 ### Periodic Tasks (Celery Beat)
 
-```python
-# celery_app.py
-from celery.schedules import crontab
+```javascript
+await emailQueue.add(
+  'send-daily-report',
+  {},
+  {
+    repeat: { cron: '0 9 * * *' }, // Каждый день в 9:00
+  },
+);
 
-app.conf.beat_schedule = {
-    'send-daily-report': {
-        'task': 'tasks.send_daily_report',
-        'schedule': crontab(hour=9, minute=0),  # Каждый день в 9:00
-    },
-    'cleanup-old-sessions': {
-        'task': 'tasks.cleanup_sessions',
-        'schedule': crontab(hour=2, minute=0),  # Каждый день в 2:00
-    },
-    'update-cache-every-5-minutes': {
-        'task': 'tasks.update_cache',
-        'schedule': 300.0,  # Каждые 5 минут (в секундах)
-    },
-    'send-reminder-monday-friday': {
-        'task': 'tasks.send_reminder',
-        'schedule': crontab(hour=10, minute=0, day_of_week='1-5'),  # Пн-Пт в 10:00
-    },
-}
+await analyticsQueue.add(
+  'cleanup-old-sessions',
+  {},
+  {
+    repeat: { cron: '0 2 * * *' }, // Каждый день в 2:00
+  },
+);
+
+await analyticsQueue.add(
+  'update-cache',
+  {},
+  {
+    repeat: { every: 300_000 }, // Каждые 5 минут
+  },
+);
+
+await emailQueue.add(
+  'send-reminder',
+  {},
+  {
+    repeat: { cron: '0 10 * * 1-5' }, // Пн-Пт в 10:00
+  },
+);
 ```
 
 ```bash
-# Запуск scheduler
-celery -A celery_app beat --loglevel=info
+# Повторяющиеся задачи требуют QueueScheduler
+node schedulers/queue-scheduler.js
 ```
 
 ### Мониторинг: Flower
 
 ```bash
-pip install flower
+npm install -g bull-board
 
 # Запуск веб-интерфейса
-celery -A celery_app flower
+npx bull-board --queue "redis://127.0.0.1:6379#emails"
 ```
 
-Откройте `http://localhost:5555`:
+Откройте `http://localhost:3000`:
 - Активные воркеры
 - Статистика задач
 - История выполнения
@@ -295,83 +389,96 @@ celery -A celery_app flower
 
 ### Пример: Image Processing Service
 
-```python
-# tasks.py
-from PIL import Image
-import boto3
-import requests
-from io import BytesIO
+```javascript
+// workers/image-pipeline.js
+const { Worker } = require('bullmq');
+const fetch = require('node-fetch');
+const sharp = require('sharp');
+const { S3Client, PutObjectCommand } = require('@aws-sdk/client-s3');
+const { imageQueue, connection } = require('../queues');
 
-@app.task(bind=True, max_retries=3)
-def process_image_pipeline(self, image_url, user_id):
-    try:
-        # 1. Download
-        response = requests.get(image_url, timeout=30)
-        img = Image.open(BytesIO(response.content))
+const s3 = new S3Client({ region: 'us-east-1' });
 
-        # 2. Resize
-        sizes = [(800, 600), (400, 300), (200, 150)]
-        results = []
+const imagePipelineWorker = new Worker(
+  imageQueue.name,
+  async (job) => {
+    const { imageUrl, userId } = job.data;
 
-        for width, height in sizes:
-            resized = img.resize((width, height), Image.LANCZOS)
+    // 1. Download
+    const response = await fetch(imageUrl, { timeout: 30_000 });
+    const buffer = Buffer.from(await response.arrayBuffer());
 
-            # 3. Upload to S3
-            buffer = BytesIO()
-            resized.save(buffer, format='JPEG')
-            buffer.seek(0)
+    const sizes = [
+      { width: 800, height: 600 },
+      { width: 400, height: 300 },
+      { width: 200, height: 150 },
+    ];
 
-            s3 = boto3.client('s3')
-            key = f'users/{user_id}/images/{width}x{height}.jpg'
+    const results = [];
 
-            s3.upload_fileobj(buffer, 'my-bucket', key)
+    for (const { width, height } of sizes) {
+      // 2. Resize
+      const resized = await sharp(buffer).resize(width, height).jpeg().toBuffer();
 
-            results.append({
-                'size': f'{width}x{height}',
-                'url': f'https://my-bucket.s3.amazonaws.com/{key}'
-            })
+      const key = `users/${userId}/images/${width}x${height}.jpg`;
 
-        # 4. Update database
-        db.update_user_images(user_id, results)
+      // 3. Upload to S3
+      await s3.send(
+        new PutObjectCommand({
+          Bucket: 'my-bucket',
+          Key: key,
+          Body: resized,
+          ContentType: 'image/jpeg',
+        }),
+      );
 
-        return {'user_id': user_id, 'images': results}
-
-    except Exception as exc:
-        raise self.retry(exc=exc, countdown=60)
-
-# Web API
-@app.post("/upload")
-def upload_image(image_url: str, user_id: int):
-    task = process_image_pipeline.delay(image_url, user_id)
-    return {'task_id': task.id, 'status': 'processing'}
-
-@app.get("/status/{task_id}")
-def get_status(task_id: str):
-    result = AsyncResult(task_id, app=celery_app)
-    return {
-        'task_id': task_id,
-        'status': result.status,
-        'result': result.result if result.ready() else None
+      results.push({ size: `${width}x${height}`, url: `https://my-bucket.s3.amazonaws.com/${key}` });
     }
+
+    // 4. Update database
+    await db.updateUserImages(userId, results);
+
+    return { userId, images: results };
+  },
+  {
+    connection,
+    attempts: 3,
+    backoff: { type: 'fixed', delay: 60_000 },
+  },
+);
+
+// Web API
+app.post('/upload', async (req, res) => {
+  const { imageUrl, userId } = req.body;
+  const job = await imageQueue.add('image-pipeline', { imageUrl, userId });
+  res.json({ jobId: job.id, status: 'processing' });
+});
+
+app.get('/status/:jobId', async (req, res) => {
+  const job = await imageQueue.getJob(req.params.jobId);
+  if (!job) {
+    return res.status(404).json({ error: 'Job not found' });
+  }
+
+  const state = await job.getState();
+  const result = state === 'completed' ? await job.returnvalue : null;
+  res.json({ jobId: job.id, status: state, result });
+});
 ```
 
 ### Priority Queues
 
-```python
-# Конфигурация приоритетных очередей
-app.conf.task_routes = {
-    'tasks.critical_task': {'queue': 'critical'},
-    'tasks.normal_task': {'queue': 'default'},
-    'tasks.low_priority': {'queue': 'low'},
-}
+```javascript
+await emailQueue.add('critical-task', { payload }, { priority: 1 }); // highest priority
+await emailQueue.add('normal-task', { payload }, { priority: 5 });
+await emailQueue.add('low-task', { payload }, { priority: 10 });
 
-# Отправка в конкретную очередь
-critical_task.apply_async(args=[...], queue='critical')
-
-# Запуск воркеров для разных очередей
-# celery -A celery_app worker -Q critical --concurrency=10
-# celery -A celery_app worker -Q default --concurrency=5
-# celery -A celery_app worker -Q low --concurrency=2
+// Worker будет обрабатывать задачи в порядке приоритета
+const priorityWorker = new Worker(
+  emailQueue.name,
+  async (job) => handleTask(job),
+  { connection, concurrency: 10 },
+);
 ```
 
 ## BullMQ (Node.js)
@@ -725,28 +832,6 @@ app.listen(3000, () => {
 
 ### 1. Idempotency
 
-```python
-# Celery
-import redis
-
-redis_client = redis.Redis()
-
-@app.task(bind=True)
-def process_payment(self, payment_id):
-    # Проверка уже обработан ли платёж
-    lock_key = f'payment_lock:{payment_id}'
-
-    if not redis_client.set(lock_key, 'locked', nx=True, ex=3600):
-        return {'status': 'already_processed', 'payment_id': payment_id}
-
-    try:
-        # Обработка
-        result = charge_card(payment_id)
-        return result
-    finally:
-        redis_client.delete(lock_key)
-```
-
 ```javascript
 // BullMQ
 const worker = new Worker('payments', async (job) => {
@@ -768,20 +853,6 @@ await paymentQueue.add('process', { paymentId: '123' }, {
 ```
 
 ### 2. Error Handling & Dead Letter Queue
-
-```python
-# Celery
-@app.task(bind=True, max_retries=3)
-def risky_task(self, data):
-    try:
-        return perform_operation(data)
-    except RetryableError as exc:
-        raise self.retry(exc=exc, countdown=60)
-    except FatalError:
-        # Отправить в DLQ
-        dead_letter_queue.send(data, error=str(exc))
-        raise Reject('Fatal error', requeue=False)
-```
 
 ```javascript
 // BullMQ
@@ -813,23 +884,6 @@ const worker = new Worker('tasks', async (job) => {
 
 ### 3. Graceful Shutdown
 
-```python
-# Celery
-import signal
-import sys
-
-def graceful_shutdown(signum, frame):
-    print("Shutting down gracefully...")
-    # Celery worker завершит текущие задачи
-    sys.exit(0)
-
-signal.signal(signal.SIGTERM, graceful_shutdown)
-signal.signal(signal.SIGINT, graceful_shutdown)
-
-# Запуск с graceful timeout
-# celery -A celery_app worker --time-limit=300 --soft-time-limit=270
-```
-
 ```javascript
 // BullMQ
 async function gracefulShutdown() {
@@ -847,33 +901,29 @@ process.on('SIGINT', gracefulShutdown);
 
 ### 4. Resource Cleanup
 
-```python
-@app.task(bind=True)
-def process_file(self, file_path):
-    temp_file = None
+```javascript
+const fs = require('fs/promises');
 
-    try:
-        temp_file = download_file(file_path)
-        result = process(temp_file)
-        upload_result(result)
-        return result
-
-    finally:
-        # Cleanup в любом случае
-        if temp_file and os.path.exists(temp_file):
-            os.remove(temp_file)
+const fileWorker = new Worker(
+  'files',
+  async (job) => {
+    let tempFilePath;
+    try {
+      tempFilePath = await downloadFile(job.data.filePath);
+      const result = await processFile(tempFilePath);
+      await uploadResult(result);
+      return result;
+    } finally {
+      if (tempFilePath) {
+        await fs.rm(tempFilePath, { force: true });
+      }
+    }
+  },
+  { connection },
+);
 ```
 
 ### 5. Task Result Expiration
-
-```python
-# Celery
-app.conf.result_expires = 3600  # Результаты хранятся 1 час
-
-@app.task(ignore_result=True)  # Не сохранять результат вообще
-def log_event(event):
-    db.insert(event)
-```
 
 ```javascript
 // BullMQ
@@ -884,25 +934,6 @@ await queue.add('task', data, {
 ```
 
 ### 6. Metrics и Monitoring
-
-```python
-# Celery + Prometheus
-from prometheus_client import Counter, Histogram
-
-task_counter = Counter('celery_tasks_total', 'Total tasks', ['task_name', 'status'])
-task_duration = Histogram('celery_task_duration_seconds', 'Task duration', ['task_name'])
-
-@app.task(bind=True)
-def monitored_task(self):
-    with task_duration.labels(task_name=self.name).time():
-        try:
-            result = perform_task()
-            task_counter.labels(task_name=self.name, status='success').inc()
-            return result
-        except Exception:
-            task_counter.labels(task_name=self.name, status='failure').inc()
-            raise
-```
 
 ```javascript
 // BullMQ + Prometheus
@@ -947,50 +978,6 @@ worker.on('failed', (job) => {
 ## Практический пример: E-commerce Order Processing
 
 ### Celery версия
-
-```python
-from celery import chain, group
-
-@app.task
-def validate_order(order_id):
-    order = db.get_order(order_id)
-    if order.total > 0 and order.items:
-        return order_id
-    raise ValueError("Invalid order")
-
-@app.task
-def charge_payment(order_id):
-    order = db.get_order(order_id)
-    payment_id = stripe.charge(order.total, order.payment_method)
-    db.update_order(order_id, payment_id=payment_id)
-    return order_id
-
-@app.task
-def update_inventory(order_id):
-    order = db.get_order(order_id)
-    for item in order.items:
-        inventory.decrease(item.product_id, item.quantity)
-    return order_id
-
-@app.task
-def send_notifications(order_id):
-    results = group(
-        send_confirmation_email.s(order_id),
-        send_sms.s(order_id),
-        notify_warehouse.s(order_id),
-    ).apply_async()
-    return order_id
-
-# Pipeline
-workflow = chain(
-    validate_order.s(12345),
-    charge_payment.s(),
-    update_inventory.s(),
-    send_notifications.s(),
-)
-
-result = workflow.apply_async()
-```
 
 ### BullMQ версия
 

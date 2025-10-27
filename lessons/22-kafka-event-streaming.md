@@ -151,384 +151,477 @@ kafka-topics --describe --topic orders --bootstrap-server localhost:9092
 
 ### Базовый Producer
 
-```python
-from kafka import KafkaProducer
-import json
+```javascript
+const { Kafka, CompressionTypes } = require('kafkajs');
 
-producer = KafkaProducer(
-    bootstrap_servers=['localhost:9092'],
-    value_serializer=lambda v: json.dumps(v).encode('utf-8')
-)
+const kafka = new Kafka({
+  clientId: 'orders-app',
+  brokers: ['localhost:9092'],
+});
 
-# Отправка сообщения
-order = {
-    'order_id': '12345',
-    'user_id': '789',
-    'total': 99.99,
-    'items': ['item1', 'item2']
+async function sendOrder() {
+  const producer = kafka.producer();
+  await producer.connect();
+
+  // Отправка сообщения
+  const order = {
+    order_id: '12345',
+    user_id: '789',
+    total: 99.99,
+    items: ['item1', 'item2'],
+  };
+
+  try {
+    const responses = await producer.send({
+      topic: 'orders',
+      messages: [{ value: JSON.stringify(order) }],
+    });
+
+    responses.forEach((response) => {
+      console.log(
+        `Sent to partition ${response.partition} at offset ${response.baseOffset}`,
+      );
+    });
+  } catch (error) {
+    console.error('Error:', error);
+  } finally {
+    await producer.disconnect();
+  }
 }
 
-future = producer.send('orders', value=order)
-
-# Ожидание подтверждения
-try:
-    record_metadata = future.get(timeout=10)
-    print(f"Sent to partition {record_metadata.partition} at offset {record_metadata.offset}")
-except Exception as e:
-    print(f"Error: {e}")
-
-producer.close()
+sendOrder().catch(console.error);
 ```
 
 ### Producer с ключом (для партиционирования)
 
-```python
-# Сообщения с одинаковым ключом попадут в одну партицию
-producer = KafkaProducer(
-    bootstrap_servers=['localhost:9092'],
-    key_serializer=lambda k: k.encode('utf-8'),
-    value_serializer=lambda v: json.dumps(v).encode('utf-8')
-)
+```javascript
+async function sendPartitionedOrders() {
+  const producer = kafka.producer();
+  await producer.connect();
 
-# Все заказы пользователя 789 — в одной партиции (сохраняется порядок)
-for i in range(10):
-    producer.send(
-        'orders',
-        key='user_789',  # Partition = hash(key) % num_partitions
-        value={'order_id': f'order_{i}', 'total': i * 10}
-    )
+  // Все заказы пользователя 789 — в одной партиции (сохраняется порядок)
+  const messages = Array.from({ length: 10 }, (_, i) => ({
+    key: 'user_789', // Partition = hash(key) % num_partitions
+    value: JSON.stringify({ order_id: `order_${i}`, total: i * 10 }),
+  }));
 
-producer.flush()
+  await producer.send({ topic: 'orders', messages });
+  await producer.disconnect();
+}
+
+sendPartitionedOrders().catch(console.error);
 ```
 
 ### Асинхронный Producer с callback
 
-```python
-def on_send_success(record_metadata):
-    print(f"Message sent to {record_metadata.topic} "
-          f"partition {record_metadata.partition} "
-          f"offset {record_metadata.offset}")
+```javascript
+async function sendWithCallbacks() {
+  const producer = kafka.producer();
+  await producer.connect();
 
-def on_send_error(exc):
-    print(f"Error sending message: {exc}")
+  const order = {
+    order_id: 'callback-1',
+    total: 59.99,
+  };
 
-# Async send
-producer.send('orders', value=order) \
-    .add_callback(on_send_success) \
-    .add_errback(on_send_error)
+  const onSendSuccess = (responses) => {
+    responses.forEach((response) => {
+      console.log(
+        `Message sent to ${response.topicName} partition ${response.partition} offset ${response.baseOffset}`,
+      );
+    });
+  };
+
+  const onSendError = (error) => {
+    console.error('Error sending message:', error);
+  };
+
+  const sendPromise = producer.send({
+    topic: 'orders',
+    messages: [{ value: JSON.stringify(order) }],
+  });
+
+  sendPromise.then(onSendSuccess).catch(onSendError).finally(async () => {
+    await producer.disconnect();
+  });
+
+  await sendPromise;
+}
+
+sendWithCallbacks().catch(console.error);
 ```
 
 ### Producer с compression
 
-```python
-# Сжатие для экономии bandwidth и storage
-producer = KafkaProducer(
-    bootstrap_servers=['localhost:9092'],
-    compression_type='gzip',  # gzip, snappy, lz4, zstd
-    value_serializer=lambda v: json.dumps(v).encode('utf-8')
-)
+```javascript
+async function sendCompressed() {
+  const producer = kafka.producer();
+  await producer.connect();
+
+  await producer.send({
+    topic: 'orders',
+    compression: CompressionTypes.GZIP, // gzip, snappy, lz4, zstd
+    messages: [
+      {
+        value: JSON.stringify({ order_id: 'compressed-1', total: 120.5 }),
+      },
+    ],
+  });
+
+  await producer.disconnect();
+}
+
+sendCompressed().catch(console.error);
 ```
 
 ### Idempotent Producer
 
-```python
-# Гарантия exactly-once для producer (дедупликация)
-producer = KafkaProducer(
-    bootstrap_servers=['localhost:9092'],
-    enable_idempotence=True,  # Предотвращает дубликаты
-    acks='all',  # Ожидание подтверждения от всех реплик
-    retries=5,
-    max_in_flight_requests_per_connection=5
-)
+```javascript
+async function sendIdempotent() {
+  // Гарантия exactly-once для producer (дедупликация)
+  const producer = kafka.producer({
+    idempotent: true, // Предотвращает дубликаты
+    retry: { retries: 5 },
+  });
+
+  await producer.connect();
+
+  await producer.send({
+    topic: 'orders',
+    messages: [{ value: JSON.stringify({ order_id: 'unique', total: 200 }) }],
+  });
+
+  await producer.disconnect();
+}
+
+sendIdempotent().catch(console.error);
 ```
 
 ### Транзакционный Producer
 
-```python
-from kafka import KafkaProducer
+```javascript
+async function sendTransactional() {
+  const producer = kafka.producer({
+    transactionalId: 'my-transactional-id',
+    idempotent: true,
+  });
 
-producer = KafkaProducer(
-    bootstrap_servers=['localhost:9092'],
-    transactional_id='my-transactional-id',
-    enable_idempotence=True
-)
+  await producer.connect();
 
-producer.init_transactions()
+  const transaction = await producer.transaction();
 
-try:
-    producer.begin_transaction()
+  try {
+    // Атомарная отправка нескольких сообщений
+    await transaction.send({
+      topic: 'orders',
+      messages: [{ value: JSON.stringify({ order_id: '1' }) }],
+    });
 
-    # Атомарная отправка нескольких сообщений
-    producer.send('orders', value={'order_id': '1'})
-    producer.send('inventory', value={'product_id': 'A', 'qty': -1})
-    producer.send('payments', value={'amount': 99.99})
+    await transaction.send({
+      topic: 'inventory',
+      messages: [{ value: JSON.stringify({ product_id: 'A', qty: -1 }) }],
+    });
 
-    producer.commit_transaction()
-except Exception as e:
-    producer.abort_transaction()
-    print(f"Transaction aborted: {e}")
-finally:
-    producer.close()
+    await transaction.send({
+      topic: 'payments',
+      messages: [{ value: JSON.stringify({ amount: 99.99 }) }],
+    });
+
+    await transaction.commit();
+  } catch (error) {
+    await transaction.abort();
+    console.error('Transaction aborted:', error);
+  } finally {
+    await producer.disconnect();
+  }
+}
+
+sendTransactional().catch(console.error);
 ```
 
 ## Consumer (Python)
 
 ### Базовый Consumer
 
-```python
-from kafka import KafkaConsumer
-import json
+```javascript
+async function consumeOrders() {
+  const consumer = kafka.consumer({
+    groupId: 'email-service',
+  });
 
-consumer = KafkaConsumer(
-    'orders',  # Topic
-    bootstrap_servers=['localhost:9092'],
-    auto_offset_reset='earliest',  # earliest, latest, none
-    enable_auto_commit=True,
-    group_id='email-service',
-    value_deserializer=lambda m: json.loads(m.decode('utf-8'))
-)
+  await consumer.connect();
+  await consumer.subscribe({ topic: 'orders', fromBeginning: true });
 
-# Бесконечный цикл чтения
-for message in consumer:
-    print(f"Partition: {message.partition}, Offset: {message.offset}")
-    print(f"Key: {message.key}, Value: {message.value}")
+  await consumer.run({
+    eachMessage: async ({ topic, partition, message }) => {
+      console.log(`Partition: ${partition}, Offset: ${message.offset}`);
+      const key = message.key ? message.key.toString() : null;
+      const value = message.value ? message.value.toString() : null;
+      console.log(`Key: ${key}, Value: ${value}`);
 
-    # Обработка события
-    order = message.value
-    send_confirmation_email(order['user_id'], order['order_id'])
+      // Обработка события
+      const order = value ? JSON.parse(value) : null;
+      if (order) {
+        await sendConfirmationEmail(order.user_id, order.order_id);
+      }
+    },
+  });
+}
+
+consumeOrders().catch(console.error);
 ```
 
 ### Manual Commit
 
-```python
-consumer = KafkaConsumer(
-    'orders',
-    bootstrap_servers=['localhost:9092'],
-    enable_auto_commit=False,  # Manual commit
-    group_id='inventory-service'
-)
+```javascript
+async function consumeWithManualCommit() {
+  const consumer = kafka.consumer({
+    groupId: 'inventory-service',
+  });
 
-for message in consumer:
-    try:
-        process_order(message.value)
+  await consumer.connect();
+  await consumer.subscribe({ topic: 'orders' });
 
-        # Commit после успешной обработки
-        consumer.commit()
-    except Exception as e:
-        print(f"Error processing message: {e}")
-        # Не коммитим → сообщение обработается повторно
+  await consumer.run({
+    autoCommit: false, // Manual commit
+    eachMessage: async ({ topic, partition, message }) => {
+      try {
+        await processOrder(JSON.parse(message.value.toString()));
+
+        // Commit после успешной обработки
+        await consumer.commitOffsets([
+          {
+            topic,
+            partition,
+            offset: (Number(message.offset) + 1).toString(),
+          },
+        ]);
+      } catch (error) {
+        console.error('Error processing message:', error);
+        // Не коммитим → сообщение обработается повторно
+      }
+    },
+  });
+}
+
+consumeWithManualCommit().catch(console.error);
 ```
 
 ### Batch Processing
 
-```python
-from kafka import TopicPartition
+```javascript
+async function consumeInBatches() {
+  const consumer = kafka.consumer({ groupId: 'batch-service' });
+  await consumer.connect();
+  await consumer.subscribe({ topic: 'orders' });
 
-consumer = KafkaConsumer(
-    'orders',
-    bootstrap_servers=['localhost:9092'],
-    enable_auto_commit=False,
-    max_poll_records=100  # Читать до 100 сообщений за раз
-)
+  await consumer.run({
+    eachBatchAutoResolve: false,
+    eachBatch: async ({ batch, resolveOffset, heartbeat, commitOffsetsIfNecessary }) => {
+      const records = batch.messages.map((message) =>
+        JSON.parse(message.value.toString()),
+      );
 
-while True:
-    messages = consumer.poll(timeout_ms=1000)
+      if (records.length > 0) {
+        await processBatch(records);
+      }
 
-    if not messages:
-        continue
+      for (const message of batch.messages) {
+        resolveOffset(message.offset);
+      }
 
-    batch = []
-    for topic_partition, records in messages.items():
-        for record in records:
-            batch.append(record.value)
+      await commitOffsetsIfNecessary();
+      await heartbeat();
+    },
+  });
+}
 
-    # Обработка батча
-    if batch:
-        process_batch(batch)
-        consumer.commit()
+consumeInBatches().catch(console.error);
 ```
 
 ### Partition Assignment
 
-```python
-from kafka import KafkaConsumer, TopicPartition
+```javascript
+async function consumeSpecificPartitions() {
+  const consumer = kafka.consumer({ groupId: 'manual-assignment' });
+  await consumer.connect();
 
-consumer = KafkaConsumer(
-    bootstrap_servers=['localhost:9092'],
-    enable_auto_commit=False
-)
+  const assignments = [
+    { topic: 'orders', partition: 0 },
+    { topic: 'orders', partition: 1 },
+  ];
 
-# Ручное назначение партиций (без consumer group)
-partition_0 = TopicPartition('orders', 0)
-partition_1 = TopicPartition('orders', 1)
+  await consumer.assign(assignments);
 
-consumer.assign([partition_0, partition_1])
+  // Seek к конкретному offset
+  await consumer.seek({ topic: 'orders', partition: 0, offset: '100' });
 
-# Seek к конкретному offset
-consumer.seek(partition_0, 100)  # Начать с offset 100
+  await consumer.run({
+    eachMessage: async ({ partition, message }) => {
+      console.log(`Partition ${partition}: ${message.value.toString()}`);
+    },
+  });
+}
 
-for message in consumer:
-    print(f"Partition {message.partition}: {message.value}")
+consumeSpecificPartitions().catch(console.error);
 ```
 
 ### Rebalance Listener
 
-```python
-from kafka import KafkaConsumer, ConsumerRebalanceListener, TopicPartition
+```javascript
+async function consumeWithRebalanceHooks() {
+  const consumer = kafka.consumer({ groupId: 'service-1' });
+  await consumer.connect();
+  await consumer.subscribe({ topic: 'orders' });
 
-class RebalanceListener(ConsumerRebalanceListener):
-    def __init__(self, consumer):
-        self.consumer = consumer
+  await consumer.run({
+    partitionsAssigned: async (assignment) => {
+      console.log('Partitions assigned:', assignment);
+      // Загрузить состояние после rebalance при необходимости
+    },
+    partitionsRevoked: async (assignment) => {
+      console.log('Partitions revoked:', assignment);
+      // Сохранить состояние перед rebalance при необходимости
+    },
+    eachMessage: async ({ message }) => {
+      await process(JSON.parse(message.value.toString()));
+    },
+  });
+}
 
-    def on_partitions_revoked(self, revoked):
-        print(f"Partitions revoked: {revoked}")
-        # Сохранить состояние перед rebalance
-        self.consumer.commit()
-
-    def on_partitions_assigned(self, assigned):
-        print(f"Partitions assigned: {assigned}")
-        # Загрузить состояние после rebalance
-
-consumer = KafkaConsumer(
-    'orders',
-    bootstrap_servers=['localhost:9092'],
-    group_id='service-1'
-)
-
-listener = RebalanceListener(consumer)
-consumer.subscribe(['orders'], listener=listener)
-
-for message in consumer:
-    process(message)
+consumeWithRebalanceHooks().catch(console.error);
 ```
 
 ## Kafka Streams
 
 ### Простой Stream Processing
 
-```python
-from kafka import KafkaConsumer, KafkaProducer
-import json
+```javascript
+async function streamTransform() {
+  const consumer = kafka.consumer({ groupId: 'stream-worker' });
+  const producer = kafka.producer();
 
-# Consumer для входного топика
-consumer = KafkaConsumer(
-    'raw-events',
-    bootstrap_servers=['localhost:9092'],
-    value_deserializer=lambda m: json.loads(m.decode('utf-8'))
-)
+  await consumer.connect();
+  await producer.connect();
+  await consumer.subscribe({ topic: 'raw-events' });
 
-# Producer для выходного топика
-producer = KafkaProducer(
-    bootstrap_servers=['localhost:9092'],
-    value_serializer=lambda v: json.dumps(v).encode('utf-8')
-)
+  await consumer.run({
+    eachMessage: async ({ message }) => {
+      const event = JSON.parse(message.value.toString());
 
-# Stream processing: фильтрация и трансформация
-for message in consumer:
-    event = message.value
+      // Фильтр: только успешные покупки
+      if (event.type === 'purchase' && event.status === 'completed') {
+        // Трансформация
+        const enriched = {
+          order_id: event.order_id,
+          total: event.total,
+          timestamp: event.timestamp,
+          category: categorize(event.items),
+        };
 
-    # Фильтр: только успешные покупки
-    if event['type'] == 'purchase' and event['status'] == 'completed':
+        // Отправка в другой топик
+        await producer.send({
+          topic: 'successful-orders',
+          messages: [{ value: JSON.stringify(enriched) }],
+        });
+      }
+    },
+  });
+}
 
-        # Трансформация
-        enriched = {
-            'order_id': event['order_id'],
-            'total': event['total'],
-            'timestamp': event['timestamp'],
-            'category': categorize(event['items'])
-        }
-
-        # Отправка в другой топик
-        producer.send('successful-orders', value=enriched)
+streamTransform().catch(console.error);
 ```
 
 ### Windowing и Aggregation
 
-```python
-from collections import defaultdict
-from datetime import datetime, timedelta
-import time
+```javascript
+function getWindowKey(timestamp) {
+  const date = new Date(timestamp * 1000);
+  date.setSeconds(0, 0);
+  return date.toISOString();
+}
 
-# Tumbling Window: подсчёт событий за 1-минутные окна
-window_size = 60  # секунд
-windows = defaultdict(int)
+async function windowedAggregation() {
+  // Tumbling Window: подсчёт событий за 1-минутные окна
+  const windows = new Map();
+  const consumer = kafka.consumer({ groupId: 'window-processor' });
 
-consumer = KafkaConsumer(
-    'page-views',
-    bootstrap_servers=['localhost:9092']
-)
+  await consumer.connect();
+  await consumer.subscribe({ topic: 'page-views' });
 
-def get_window_key(timestamp):
-    # Округление до минуты
-    dt = datetime.fromtimestamp(timestamp)
-    window_start = dt.replace(second=0, microsecond=0)
-    return window_start.isoformat()
+  await consumer.run({
+    eachMessage: async ({ message }) => {
+      const event = JSON.parse(message.value.toString());
+      const windowKey = getWindowKey(event.timestamp);
+      const current = windows.get(windowKey) || 0;
+      windows.set(windowKey, current + 1);
 
-for message in consumer:
-    event = message.value
-    timestamp = event['timestamp']
+      // Периодический вывод результатов
+      if (windows.size > 10) {
+        console.log('Page views per minute:');
+        [...windows.entries()]
+          .sort(([a], [b]) => (a > b ? 1 : -1))
+          .forEach(([window, count]) => {
+            console.log(`  ${window}: ${count}`);
+          });
 
-    window_key = get_window_key(timestamp)
-    windows[window_key] += 1
+        // Очистка старых окон
+        const cutoff = new Date(Date.now() - 10 * 60 * 1000);
+        cutoff.setSeconds(0, 0);
+        for (const [key] of windows) {
+          if (key < cutoff.toISOString()) {
+            windows.delete(key);
+          }
+        }
+      }
+    },
+  });
+}
 
-    # Периодический вывод результатов
-    if len(windows) > 10:
-        print("Page views per minute:")
-        for window, count in sorted(windows.items()):
-            print(f"  {window}: {count}")
-
-        # Очистка старых окон
-        now = datetime.now()
-        cutoff = (now - timedelta(minutes=10)).replace(second=0, microsecond=0)
-        windows = {k: v for k, v in windows.items() if k >= cutoff.isoformat()}
+windowedAggregation().catch(console.error);
 ```
 
 ### Join двух топиков
 
-```python
-from collections import defaultdict
-import json
+```javascript
+async function joinOrdersAndPayments() {
+  const ordersCache = new Map();
+  const consumer = kafka.consumer({ groupId: 'join-service' });
+  const producer = kafka.producer();
 
-# Join: orders + payments
-orders_cache = {}
+  await consumer.connect();
+  await producer.connect();
+  await consumer.subscribe({ topics: ['orders', 'payments'] });
 
-consumer = KafkaConsumer(
-    'orders', 'payments',
-    bootstrap_servers=['localhost:9092'],
-    value_deserializer=lambda m: json.loads(m.decode('utf-8'))
-)
+  await consumer.run({
+    eachMessage: async ({ topic, message }) => {
+      const data = JSON.parse(message.value.toString());
 
-producer = KafkaProducer(
-    bootstrap_servers=['localhost:9092'],
-    value_serializer=lambda v: json.dumps(v).encode('utf-8')
-)
+      if (topic === 'orders') {
+        ordersCache.set(data.order_id, data);
+      } else if (topic === 'payments') {
+        const order = ordersCache.get(data.order_id);
+        if (order) {
+          const joined = {
+            ...order,
+            payment_method: data.method,
+            payment_status: data.status,
+            paid_at: data.timestamp,
+          };
 
-for message in consumer:
-    topic = message.topic
-    data = message.value
+          await producer.send({
+            topic: 'orders-with-payments',
+            messages: [{ value: JSON.stringify(joined) }],
+          });
 
-    if topic == 'orders':
-        order_id = data['order_id']
-        orders_cache[order_id] = data
+          ordersCache.delete(data.order_id);
+        }
+      }
+    },
+  });
+}
 
-    elif topic == 'payments':
-        order_id = data['order_id']
-
-        # Join: если есть соответствующий заказ
-        if order_id in orders_cache:
-            order = orders_cache[order_id]
-
-            joined = {
-                **order,
-                'payment_method': data['method'],
-                'payment_status': data['status'],
-                'paid_at': data['timestamp']
-            }
-
-            producer.send('orders-with-payments', value=joined)
-
-            # Очистка cache
-            del orders_cache[order_id]
+joinOrdersAndPayments().catch(console.error);
 ```
 
 ## Kafka Connect
@@ -610,15 +703,36 @@ Partition 1:
 
 ### Producer ACKs
 
-```python
-# acks=0: не ждать подтверждения (fastest, least reliable)
-producer = KafkaProducer(acks=0)
+```javascript
+async function sendWithDifferentAcks() {
+  const producer = kafka.producer();
+  await producer.connect();
 
-# acks=1: ждать подтверждения от лидера (balanced)
-producer = KafkaProducer(acks=1)
+  // acks=0: не ждать подтверждения (fastest, least reliable)
+  await producer.send({
+    topic: 'events',
+    acks: 0,
+    messages: [{ value: 'fire-and-forget' }],
+  });
 
-# acks=all: ждать подтверждения от всех ISR (slowest, most reliable)
-producer = KafkaProducer(acks='all')
+  // acks=1: ждать подтверждения от лидера (balanced)
+  await producer.send({
+    topic: 'events',
+    acks: 1,
+    messages: [{ value: 'leader-only' }],
+  });
+
+  // acks=all: ждать подтверждения от всех ISR (slowest, most reliable)
+  await producer.send({
+    topic: 'events',
+    acks: -1,
+    messages: [{ value: 'all-replicas' }],
+  });
+
+  await producer.disconnect();
+}
+
+sendWithDifferentAcks().catch(console.error);
 ```
 
 | acks | Latency | Durability | Use Case |
@@ -768,209 +882,378 @@ services:
 
 Все изменения состояния = события в Kafka.
 
-```python
-# Commands → Events → State
+```javascript
+async function createOrderEvent(orderData) {
+  const producer = kafka.producer();
+  await producer.connect();
 
-# Command: создать заказ
-def create_order(order_data):
-    event = {
-        'event_type': 'OrderCreated',
-        'order_id': generate_id(),
-        'user_id': order_data['user_id'],
-        'items': order_data['items'],
-        'total': order_data['total'],
-        'timestamp': time.time()
-    }
+  const event = {
+    event_type: 'OrderCreated',
+    order_id: generateId(),
+    user_id: orderData.user_id,
+    items: orderData.items,
+    total: orderData.total,
+    timestamp: Date.now() / 1000,
+  };
 
-    producer.send('order-events', key=event['order_id'], value=event)
-    return event['order_id']
+  await producer.send({
+    topic: 'order-events',
+    messages: [
+      {
+        key: event.order_id,
+        value: JSON.stringify(event),
+      },
+    ],
+  });
 
-# Event handler: восстановление состояния
-def rebuild_order_state(order_id):
-    consumer = KafkaConsumer(
-        'order-events',
-        auto_offset_reset='earliest'
-    )
+  await producer.disconnect();
+  return event.order_id;
+}
 
-    order = None
+// Event handler: восстановление состояния
+async function rebuildOrderState(orderId) {
+  const consumer = kafka.consumer({ groupId: `replay-${orderId}-${Date.now()}` });
+  await consumer.connect();
+  await consumer.subscribe({ topic: 'order-events', fromBeginning: true });
 
-    for message in consumer:
-        event = message.value
-        if event['order_id'] != order_id:
-            continue
+  let order = null;
 
-        if event['event_type'] == 'OrderCreated':
-            order = {
-                'id': event['order_id'],
-                'user_id': event['user_id'],
-                'items': event['items'],
-                'total': event['total'],
-                'status': 'created'
-            }
+  await new Promise((resolve) => {
+    consumer.run({
+      eachMessage: async ({ message }) => {
+        const event = JSON.parse(message.value.toString());
+        if (event.order_id !== orderId) {
+          return;
+        }
 
-        elif event['event_type'] == 'OrderPaid':
-            order['status'] = 'paid'
-            order['paid_at'] = event['timestamp']
+        if (event.event_type === 'OrderCreated') {
+          order = {
+            id: event.order_id,
+            user_id: event.user_id,
+            items: event.items,
+            total: event.total,
+            status: 'created',
+          };
+        } else if (event.event_type === 'OrderPaid' && order) {
+          order.status = 'paid';
+          order.paid_at = event.timestamp;
+        } else if (event.event_type === 'OrderShipped' && order) {
+          order.status = 'shipped';
+          order.tracking_number = event.tracking_number;
+          // Последнее событие — можно завершать восстановление
+          consumer.stop().then(resolve);
+        }
+      },
+    });
+  });
 
-        elif event['event_type'] == 'OrderShipped':
-            order['status'] = 'shipped'
-            order['tracking_number'] = event['tracking_number']
-
-    return order
+  await consumer.disconnect();
+  return order;
+}
 ```
 
 ### 2. CQRS (Command Query Responsibility Segregation)
 
 Разделение записи и чтения через Kafka.
 
-```python
-# Write Side: Commands → Events
-@app.post("/orders")
-def create_order(order_data):
-    event = {
-        'event_type': 'OrderCreated',
-        'order_id': generate_id(),
-        **order_data
-    }
+```javascript
+// Write Side: Commands → Events
+async function createOrderCommand(orderData, readDb) {
+  const producer = kafka.producer();
+  await producer.connect();
 
-    producer.send('order-events', value=event)
-    return {'order_id': event['order_id']}
+  const event = {
+    event_type: 'OrderCreated',
+    order_id: generateId(),
+    ...orderData,
+  };
 
-# Read Side: Consumer → Read DB (Elasticsearch, MongoDB)
-consumer = KafkaConsumer('order-events')
+  await producer.send({
+    topic: 'order-events',
+    messages: [{ value: JSON.stringify(event) }],
+  });
 
-for message in consumer:
-    event = message.value
+  await producer.disconnect();
+  return { order_id: event.order_id };
+}
 
-    if event['event_type'] == 'OrderCreated':
-        # Сохранить в read-optimized БД
-        elasticsearch.index(
-            index='orders',
-            id=event['order_id'],
-            body=event
-        )
+// Read Side: Consumer → Read DB (Elasticsearch, MongoDB)
+async function startOrderReadSide(readDb) {
+  const consumer = kafka.consumer({ groupId: 'order-read-side' });
+  await consumer.connect();
+  await consumer.subscribe({ topic: 'order-events', fromBeginning: true });
 
-# Query API: читает из read DB
-@app.get("/orders/{order_id}")
-def get_order(order_id):
-    return elasticsearch.get(index='orders', id=order_id)
+  await consumer.run({
+    eachMessage: async ({ message }) => {
+      const event = JSON.parse(message.value.toString());
+
+      if (event.event_type === 'OrderCreated') {
+        // Сохранить в read-optimized БД
+        await readDb.index({
+          index: 'orders',
+          id: event.order_id,
+          document: event,
+        });
+      }
+    },
+  });
+}
+
+// Query API: читает из read DB
+async function getOrder(orderId, readDb) {
+  return readDb.get({ index: 'orders', id: orderId });
+}
 ```
 
 ### 3. Change Data Capture (CDC)
 
 Debezium: репликация изменений БД в Kafka.
 
-```python
-# MySQL table changes → Kafka events
-consumer = KafkaConsumer('dbserver1.inventory.orders')
+```javascript
+async function consumeCdcChanges() {
+  // MySQL table changes → Kafka events
+  const consumer = kafka.consumer({ groupId: 'cdc-listener' });
+  await consumer.connect();
+  await consumer.subscribe({ topic: 'dbserver1.inventory.orders' });
 
-for message in consumer:
-    change = message.value
+  await consumer.run({
+    eachMessage: async ({ message }) => {
+      const change = JSON.parse(message.value.toString());
 
-    if change['op'] == 'c':  # Create
-        print(f"New order: {change['after']}")
+      if (change.op === 'c') {
+        console.log('New order:', change.after);
+      } else if (change.op === 'u') {
+        console.log('Order updated:', {
+          before: change.before,
+          after: change.after,
+        });
+      } else if (change.op === 'd') {
+        console.log('Order deleted:', change.before);
+      }
+    },
+  });
+}
 
-    elif change['op'] == 'u':  # Update
-        print(f"Order updated:")
-        print(f"  Before: {change['before']}")
-        print(f"  After: {change['after']}")
-
-    elif change['op'] == 'd':  # Delete
-        print(f"Order deleted: {change['before']}")
+consumeCdcChanges().catch(console.error);
 ```
 
 ### 4. Saga Pattern
 
 Распределённые транзакции через события.
 
-```python
-# Saga: Order → Payment → Inventory → Shipping
+```javascript
+// Saga: Order → Payment → Inventory → Shipping
 
-# Step 1: Create Order
-def create_order_saga(order_data):
-    producer.send('saga-commands', value={
-        'saga_id': generate_id(),
-        'command': 'CreateOrder',
-        'data': order_data
-    })
+async function createOrderSaga(orderData) {
+  const producer = kafka.producer();
+  await producer.connect();
 
-# Order Service
-consumer = KafkaConsumer('saga-commands')
+  await producer.send({
+    topic: 'saga-commands',
+    messages: [
+      {
+        value: JSON.stringify({
+          saga_id: generateId(),
+          command: 'CreateOrder',
+          data: orderData,
+        }),
+      },
+    ],
+  });
 
-for message in consumer:
-    cmd = message.value
+  await producer.disconnect();
+}
 
-    if cmd['command'] == 'CreateOrder':
-        order_id = create_order(cmd['data'])
+async function startOrderSagaService() {
+  const consumer = kafka.consumer({ groupId: 'order-saga-service' });
+  const producer = kafka.producer();
+  await consumer.connect();
+  await producer.connect();
+  await consumer.subscribe({ topic: 'saga-commands' });
 
-        # Success → следующий шаг
-        producer.send('saga-commands', value={
-            'saga_id': cmd['saga_id'],
-            'command': 'ProcessPayment',
-            'order_id': order_id,
-            'amount': cmd['data']['total']
-        })
+  await consumer.run({
+    eachMessage: async ({ message }) => {
+      const cmd = JSON.parse(message.value.toString());
 
-# Payment Service
-def process_payment_step(cmd):
-    try:
-        payment_id = charge_card(cmd['amount'])
+      if (cmd.command === 'CreateOrder') {
+        const orderId = await createOrder(cmd.data);
 
-        producer.send('saga-commands', value={
-            'saga_id': cmd['saga_id'],
-            'command': 'ReserveInventory',
-            'order_id': cmd['order_id']
-        })
+        await producer.send({
+          topic: 'saga-commands',
+          messages: [
+            {
+              value: JSON.stringify({
+                saga_id: cmd.saga_id,
+                command: 'ProcessPayment',
+                order_id: orderId,
+                amount: cmd.data.total,
+              }),
+            },
+          ],
+        });
+      }
+    },
+  });
+}
 
-    except PaymentError:
-        # Failure → compensate
-        producer.send('saga-commands', value={
-            'saga_id': cmd['saga_id'],
-            'command': 'CancelOrder',
-            'order_id': cmd['order_id']
-        })
+async function startPaymentSagaService() {
+  const consumer = kafka.consumer({ groupId: 'payment-saga-service' });
+  const producer = kafka.producer();
+  await consumer.connect();
+  await producer.connect();
+  await consumer.subscribe({ topic: 'saga-commands' });
+
+  await consumer.run({
+    eachMessage: async ({ message }) => {
+      const cmd = JSON.parse(message.value.toString());
+
+      if (cmd.command === 'ProcessPayment') {
+        try {
+          await chargeCard(cmd.amount);
+
+          await producer.send({
+            topic: 'saga-commands',
+            messages: [
+              {
+                value: JSON.stringify({
+                  saga_id: cmd.saga_id,
+                  command: 'ReserveInventory',
+                  order_id: cmd.order_id,
+                }),
+              },
+            ],
+          });
+        } catch (error) {
+          await producer.send({
+            topic: 'saga-commands',
+            messages: [
+              {
+                value: JSON.stringify({
+                  saga_id: cmd.saga_id,
+                  command: 'CancelOrder',
+                  order_id: cmd.order_id,
+                  reason: 'PaymentFailed',
+                }),
+              },
+            ],
+          });
+        }
+      }
+    },
+  });
+}
+
+async function startInventorySagaService() {
+  const consumer = kafka.consumer({ groupId: 'inventory-saga-service' });
+  const producer = kafka.producer();
+  await consumer.connect();
+  await producer.connect();
+  await consumer.subscribe({ topic: 'saga-commands' });
+
+  await consumer.run({
+    eachMessage: async ({ message }) => {
+      const cmd = JSON.parse(message.value.toString());
+
+      if (cmd.command === 'ReserveInventory') {
+        try {
+          await reserveItems(cmd.order_id);
+
+          await producer.send({
+            topic: 'saga-commands',
+            messages: [
+              {
+                value: JSON.stringify({
+                  saga_id: cmd.saga_id,
+                  command: 'ScheduleShipping',
+                  order_id: cmd.order_id,
+                }),
+              },
+            ],
+          });
+        } catch (error) {
+          await producer.send({
+            topic: 'saga-commands',
+            messages: [
+              {
+                value: JSON.stringify({
+                  saga_id: cmd.saga_id,
+                  command: 'RefundPayment',
+                  order_id: cmd.order_id,
+                }),
+              },
+            ],
+          });
+        }
+      } else if (cmd.command === 'RefundPayment') {
+        await refund(cmd.order_id);
+        await cancelOrder(cmd.order_id);
+      }
+    },
+  });
+}
 ```
 
 ### 5. Dead Letter Queue
 
-```python
-from kafka.errors import KafkaError
+```javascript
+async function processWithDlq() {
+  const consumer = kafka.consumer({ groupId: 'orders-worker' });
+  const producer = kafka.producer();
 
-consumer = KafkaConsumer(
-    'orders',
-    bootstrap_servers=['localhost:9092'],
-    enable_auto_commit=False
-)
+  await consumer.connect();
+  await producer.connect();
+  await consumer.subscribe({ topic: 'orders' });
 
-producer = KafkaProducer(bootstrap_servers=['localhost:9092'])
+  const maxRetries = 3;
 
-max_retries = 3
+  await consumer.run({
+    eachMessage: async ({ topic, partition, message }) => {
+      let retries = 0;
 
-for message in consumer:
-    retries = 0
+      while (retries < maxRetries) {
+        try {
+          await processMessage(JSON.parse(message.value.toString()));
+          await consumer.commitOffsets([
+            {
+              topic,
+              partition,
+              offset: (Number(message.offset) + 1).toString(),
+            },
+          ]);
+          break;
+        } catch (error) {
+          retries += 1;
+          console.warn(`Retry ${retries}/${maxRetries}: ${error.message}`);
 
-    while retries < max_retries:
-        try:
-            process_message(message.value)
-            consumer.commit()
-            break
+          if (retries === maxRetries) {
+            await producer.send({
+              topic: 'orders-dlq',
+              messages: [
+                {
+                  value: message.value,
+                  headers: {
+                    original_topic: Buffer.from('orders'),
+                    error: Buffer.from(error.message),
+                    retries: Buffer.from(String(retries)),
+                  },
+                },
+              ],
+            });
+            await consumer.commitOffsets([
+              {
+                topic,
+                partition,
+                offset: (Number(message.offset) + 1).toString(),
+              },
+            ]);
+          }
+        }
+      }
+    },
+  });
+}
 
-        except Exception as e:
-            retries += 1
-            print(f"Retry {retries}/{max_retries}: {e}")
-
-            if retries == max_retries:
-                # Отправить в DLQ
-                producer.send(
-                    'orders-dlq',
-                    value=message.value,
-                    headers=[
-                        ('original_topic', b'orders'),
-                        ('error', str(e).encode('utf-8')),
-                        ('retries', str(retries).encode('utf-8'))
-                    ]
-                )
-                consumer.commit()
+processWithDlq().catch(console.error);
 ```
 
 ## Kafka vs RabbitMQ vs SQS

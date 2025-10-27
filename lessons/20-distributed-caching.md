@@ -99,114 +99,153 @@ DEL user:123:name
 
 #### 1. Strings
 
-```python
-import redis
+```javascript
+const Redis = require('ioredis');
 
-r = redis.Redis(host='localhost', port=6379, decode_responses=True)
+const redis = new Redis({
+  host: 'localhost',
+  port: 6379,
+});
 
-# Set/Get
-r.set('key', 'value')
-value = r.get('key')
+async function demoStrings() {
+  // Set/Get
+  await redis.set('key', 'value');
+  const value = await redis.get('key');
+  console.log({ value });
 
-# With TTL
-r.setex('key', 3600, 'value')  # Expire in 1 hour
+  // With TTL
+  await redis.setex('key', 3600, 'value'); // Expire in 1 hour
 
-# Atomic operations
-r.set('counter', 0)
-r.incr('counter')  # 1
-r.incrby('counter', 5)  # 6
-r.decr('counter')  # 5
+  // Atomic operations
+  await redis.set('counter', 0);
+  await redis.incr('counter'); // 1
+  await redis.incrby('counter', 5); // 6
+  await redis.decr('counter'); // 5
+}
+
+demoStrings().catch(console.error);
 ```
 
 **Use cases**: Counters, flags, caching simple values
 
 #### 2. Hashes
 
-```python
-# User profile
-r.hset('user:123', mapping={
-    'name': 'John Doe',
-    'email': 'john@example.com',
-    'age': 30
-})
+```javascript
+async function demoHashes() {
+  // User profile
+  await redis.hset('user:123', {
+    name: 'John Doe',
+    email: 'john@example.com',
+    age: 30,
+  });
 
-# Get single field
-name = r.hget('user:123', 'name')  # 'John Doe'
+  // Get single field
+  const name = await redis.hget('user:123', 'name'); // 'John Doe'
 
-# Get all fields
-user = r.hgetall('user:123')
-# {'name': 'John Doe', 'email': 'john@example.com', 'age': '30'}
+  // Get all fields
+  const user = await redis.hgetall('user:123');
+  // { name: 'John Doe', email: 'john@example.com', age: '30' }
 
-# Increment field
-r.hincrby('user:123', 'age', 1)  # 31
+  // Increment field
+  await redis.hincrby('user:123', 'age', 1); // 31
+
+  console.log({ name, user });
+}
+
+demoHashes().catch(console.error);
 ```
 
 **Use cases**: Objects, user profiles, session data
 
 #### 3. Lists
 
-```python
-# Queue (FIFO)
-r.rpush('queue', 'task1', 'task2', 'task3')  # Right push
-task = r.lpop('queue')  # Left pop → 'task1'
+```javascript
+async function demoLists() {
+  // Queue (FIFO)
+  await redis.rpush('queue', 'task1', 'task2', 'task3'); // Right push
+  const task = await redis.lpop('queue'); // Left pop → 'task1'
 
-# Stack (LIFO)
-r.rpush('stack', 'item1', 'item2')
-item = r.rpop('stack')  # Right pop → 'item2'
+  // Stack (LIFO)
+  await redis.rpush('stack', 'item1', 'item2');
+  const item = await redis.rpop('stack'); // Right pop → 'item2'
 
-# Recent items
-r.lpush('recent:user:123', 'post1', 'post2', 'post3')
-recent = r.lrange('recent:user:123', 0, 9)  # First 10
-r.ltrim('recent:user:123', 0, 99)  # Keep only 100
+  // Recent items
+  await redis.lpush('recent:user:123', 'post1', 'post2', 'post3');
+  const recent = await redis.lrange('recent:user:123', 0, 9); // First 10
+  await redis.ltrim('recent:user:123', 0, 99); // Keep only 100
+
+  console.log({ task, item, recent });
+}
+
+demoLists().catch(console.error);
 ```
 
 **Use cases**: Queues, activity feeds, recent items
 
 #### 4. Sets
 
-```python
-# Add members
-r.sadd('tags:post:123', 'python', 'redis', 'caching')
+```javascript
+async function demoSets() {
+  // Add members
+  await redis.sadd('tags:post:123', 'nodejs', 'redis', 'caching');
 
-# Check membership
-r.sismember('tags:post:123', 'python')  # True
+  // Check membership
+  const hasTag = await redis.sismember('tags:post:123', 'nodejs'); // 1 → true
 
-# Get all members
-tags = r.smembers('tags:post:123')  # {'python', 'redis', 'caching'}
+  // Get all members
+  const tags = await redis.smembers('tags:post:123'); // ['nodejs', 'redis', 'caching']
 
-# Set operations
-r.sadd('set1', 'a', 'b', 'c')
-r.sadd('set2', 'b', 'c', 'd')
+  // Set operations
+  await redis.sadd('set1', 'a', 'b', 'c');
+  await redis.sadd('set2', 'b', 'c', 'd');
 
-r.sinter('set1', 'set2')  # Intersection: {'b', 'c'}
-r.sunion('set1', 'set2')  # Union: {'a', 'b', 'c', 'd'}
-r.sdiff('set1', 'set2')   # Difference: {'a'}
+  const intersection = await redis.sinter('set1', 'set2'); // ['b', 'c']
+  const union = await redis.sunion('set1', 'set2'); // ['a', 'b', 'c', 'd']
+  const difference = await redis.sdiff('set1', 'set2'); // ['a']
+
+  console.log({ hasTag: Boolean(hasTag), tags, intersection, union, difference });
+}
+
+demoSets().catch(console.error);
 ```
 
 **Use cases**: Tags, unique items, relationship graphs
 
 #### 5. Sorted Sets (ZSets)
 
-```python
-# Leaderboard
-r.zadd('leaderboard', {
-    'player1': 100,
-    'player2': 200,
-    'player3': 150
-})
+```javascript
+async function demoSortedSets() {
+  // Leaderboard
+  await redis.zadd(
+    'leaderboard',
+    100,
+    'player1',
+    200,
+    'player2',
+    150,
+    'player3',
+  );
 
-# Get rank
-rank = r.zrank('leaderboard', 'player2')  # 2 (0-indexed, highest score)
+  // Get rank
+  const rank = await redis.zrevrank('leaderboard', 'player2'); // 0-indexed
 
-# Top 10
-top10 = r.zrevrange('leaderboard', 0, 9, withscores=True)
-# [('player2', 200.0), ('player3', 150.0), ('player1', 100.0)]
+  // Top 10
+  const top10Raw = await redis.zrevrange('leaderboard', 0, 9, 'WITHSCORES');
+  const top10 = [];
+  for (let i = 0; i < top10Raw.length; i += 2) {
+    top10.push({ player: top10Raw[i], score: Number(top10Raw[i + 1]) });
+  }
 
-# Increment score
-r.zincrby('leaderboard', 50, 'player1')  # 150
+  // Increment score
+  await redis.zincrby('leaderboard', 50, 'player1'); // 150
 
-# Get by score range
-r.zrangebyscore('leaderboard', 100, 200)
+  // Get by score range
+  const byScore = await redis.zrangebyscore('leaderboard', 100, 200);
+
+  console.log({ rank, top10, byScore });
+}
+
+demoSortedSets().catch(console.error);
 ```
 
 **Use cases**: Leaderboards, priority queues, time-series data
@@ -215,37 +254,49 @@ r.zrangebyscore('leaderboard', 100, 200)
 
 #### Transactions
 
-```python
-# MULTI/EXEC (atomic)
-pipe = r.pipeline()
-pipe.set('key1', 'value1')
-pipe.incr('counter')
-pipe.get('key1')
-results = pipe.execute()  # All or nothing
+```javascript
+async function demoTransactions() {
+  // MULTI/EXEC (atomic)
+  const tx = redis.multi();
+  tx.set('key1', 'value1');
+  tx.incr('counter');
+  tx.get('key1');
+  const results = await tx.exec(); // All or nothing
+
+  console.log(results);
+}
+
+demoTransactions().catch(console.error);
 ```
 
 #### Pub/Sub
 
-```python
-# Publisher
-r.publish('notifications', 'New message!')
+```javascript
+async function demoPubSub() {
+  const subscriber = redis.duplicate();
+  await subscriber.connect();
 
-# Subscriber
-pubsub = r.pubsub()
-pubsub.subscribe('notifications')
+  await subscriber.subscribe('notifications', (message) => {
+    console.log('Received:', message);
+  });
 
-for message in pubsub.listen():
-    if message['type'] == 'message':
-        print(message['data'])
+  // Publisher
+  await redis.publish('notifications', 'New message!');
+
+  // Wait briefly to ensure message is received (demo purposes)
+  setTimeout(() => subscriber.disconnect(), 500);
+}
+
+demoPubSub().catch(console.error);
 ```
 
 **Use case**: Real-time notifications, chat, event broadcasting
 
 #### Lua Scripting
 
-```python
-# Atomic rate limiting
-lua_script = """
+```javascript
+async function demoRateLimit() {
+  const rateLimitScript = `
 local key = KEYS[1]
 local limit = tonumber(ARGV[1])
 local window = tonumber(ARGV[2])
@@ -260,24 +311,37 @@ if current > limit then
 else
     return 1
 end
-"""
+`;
 
-rate_limit = r.register_script(lua_script)
-allowed = rate_limit(keys=['rate:user:123'], args=[100, 60])  # 100 req/min
+  redis.defineCommand('rateLimit', {
+    numberOfKeys: 1,
+    lua: rateLimitScript,
+  });
+
+  const allowed = await redis.rateLimit('rate:user:123', 100, 60); // 100 req/min
+  console.log({ allowed: Boolean(allowed) });
+}
+
+demoRateLimit().catch(console.error);
 ```
 
 **Use case**: Atomic complex operations
 
 #### Pipelining
 
-```python
-# Batch multiple commands
-pipe = r.pipeline()
-for i in range(1000):
-    pipe.set(f'key:{i}', f'value:{i}')
-pipe.execute()
+```javascript
+async function demoPipelining() {
+  // Batch multiple commands
+  const pipeline = redis.pipeline();
+  for (let i = 0; i < 1000; i += 1) {
+    pipeline.set(`key:${i}`, `value:${i}`);
+  }
+  await pipeline.exec();
 
-# Reduces round-trips: 1 instead of 1000
+  // Reduces round-trips: 1 instead of 1000
+}
+
+demoPipelining().catch(console.error);
 ```
 
 ### Redis Persistence
@@ -356,17 +420,19 @@ redis-cli --cluster create \
 ```
 
 **Client**:
-```python
-from rediscluster import RedisCluster
+```javascript
+async function demoRedisCluster() {
+  const cluster = new Redis.Cluster([
+    { host: '127.0.0.1', port: 7000 },
+    { host: '127.0.0.1', port: 7001 },
+    { host: '127.0.0.1', port: 7002 },
+  ]);
 
-startup_nodes = [
-    {"host": "127.0.0.1", "port": "7000"},
-    {"host": "127.0.0.1", "port": "7001"},
-    {"host": "127.0.0.1", "port": "7002"}
-]
+  await cluster.set('key', 'value'); // Автоматически роутится на правильный node
+  await cluster.quit();
+}
 
-rc = RedisCluster(startup_nodes=startup_nodes, decode_responses=True)
-rc.set('key', 'value')  # Автоматически роутится на правильный node
+demoRedisCluster().catch(console.error);
 ```
 
 ## Memcached
@@ -386,44 +452,57 @@ memcached -m 64 -p 11211 -u memcache -l 127.0.0.1
 
 ### Базовые операции
 
-```python
-import memcache
+```javascript
+const Memcached = require('memcached');
+const { promisify } = require('util');
 
-mc = memcache.Client(['127.0.0.1:11211'], debug=0)
+const memcached = new Memcached('127.0.0.1:11211');
+const set = promisify(memcached.set).bind(memcached);
+const get = promisify(memcached.get).bind(memcached);
+const del = promisify(memcached.del).bind(memcached);
+const incr = promisify(memcached.incr).bind(memcached);
+const decr = promisify(memcached.decr).bind(memcached);
+const getMulti = promisify(memcached.getMulti).bind(memcached);
 
-# Set
-mc.set('key', 'value', time=3600)  # Expire in 1 hour
+async function demoMemcached() {
+  // Set
+  await set('key', 'value', 3600); // Expire in 1 hour
 
-# Get
-value = mc.get('key')
+  // Get
+  const value = await get('key');
 
-# Delete
-mc.delete('key')
+  // Delete
+  await del('key');
 
-# Increment
-mc.set('counter', 0)
-mc.incr('counter', 1)  # 1
-mc.decr('counter', 1)  # 0
+  // Increment / Decrement
+  await set('counter', 0, 3600);
+  await incr('counter', 1); // 1
+  await decr('counter', 1); // 0
 
-# Multi-get (efficient)
-values = mc.get_multi(['key1', 'key2', 'key3'])
+  // Multi-get (efficient)
+  const values = await getMulti(['key1', 'key2', 'key3']);
+
+  console.log({ value, values });
+  memcached.end();
+}
+
+demoMemcached().catch(console.error);
 ```
 
 ### Client-side Sharding
 
 Memcached не имеет built-in clustering → client handles sharding.
 
-```python
-# Consistent hashing client
-from pylibmc import Client
+```javascript
+// Consistent hashing client
+const shardedClient = new Memcached(
+  ['server1:11211', 'server2:11211', 'server3:11211'],
+  { retries: 2, remove: true }, // Ketama hashing по умолчанию
+);
 
-mc = Client(
-    ['server1:11211', 'server2:11211', 'server3:11211'],
-    binary=True,
-    behaviors={'ketama': True}  # Consistent hashing
-)
-
-mc.set('key', 'value')  # Client роутит на правильный server
+const shardedSet = promisify(shardedClient.set).bind(shardedClient);
+await shardedSet('key', 'value', 3600); // Client роутит на правильный server
+shardedClient.end();
 ```
 
 ## Практические паттерны
@@ -431,213 +510,271 @@ mc.set('key', 'value')  # Client роутит на правильный server
 ### 1. Session Store
 
 **Redis**:
-```python
-import json
+```javascript
+const { v4: uuid } = require('uuid');
 
-def create_session(user_id):
-    session_id = str(uuid.uuid4())
-    session_data = {
-        'user_id': user_id,
-        'created_at': time.time()
-    }
+async function createSession(userId) {
+  const sessionId = uuid();
+  const sessionData = {
+    userId,
+    createdAt: Date.now(),
+  };
 
-    # TTL = 24 hours
-    r.setex(f"session:{session_id}", 86400, json.dumps(session_data))
-    return session_id
+  // TTL = 24 hours
+  await redis.setex(`session:${sessionId}`, 86400, JSON.stringify(sessionData));
+  return sessionId;
+}
 
-def get_session(session_id):
-    data = r.get(f"session:{session_id}")
-    return json.loads(data) if data else None
+async function getSession(sessionId) {
+  const data = await redis.get(`session:${sessionId}`);
+  return data ? JSON.parse(data) : null;
+}
 
-def delete_session(session_id):
-    r.delete(f"session:{session_id}")
+async function deleteSession(sessionId) {
+  await redis.del(`session:${sessionId}`);
+}
 ```
 
 ### 2. Rate Limiting
 
-```python
-def is_rate_limited(user_id, limit=100, window=60):
-    key = f"rate:{user_id}:{int(time.time() / window)}"
+```javascript
+async function isRateLimited(userId, limit = 100, windowSeconds = 60) {
+  const windowId = Math.floor(Date.now() / 1000 / windowSeconds);
+  const key = `rate:${userId}:${windowId}`;
 
-    current = r.incr(key)
-    if current == 1:
-        r.expire(key, window)
+  const current = await redis.incr(key);
+  if (current === 1) {
+    await redis.expire(key, windowSeconds);
+  }
 
-    return current > limit
+  return current > limit;
+}
 
-# Usage
-if is_rate_limited(user_id):
-    return {"error": "Rate limit exceeded"}, 429
+// Usage
+if (await isRateLimited(userId)) {
+  return { error: 'Rate limit exceeded' }; // HTTP 429
+}
 ```
 
 ### 3. Leaderboard
 
-```python
-def add_score(user_id, score):
-    r.zadd('leaderboard', {user_id: score})
+```javascript
+async function addScore(userId, score) {
+  await redis.zadd('leaderboard', score, userId);
+}
 
-def get_leaderboard(limit=10):
-    return r.zrevrange('leaderboard', 0, limit - 1, withscores=True)
+async function getLeaderboard(limit = 10) {
+  const raw = await redis.zrevrange('leaderboard', 0, limit - 1, 'WITHSCORES');
+  const result = [];
+  for (let i = 0; i < raw.length; i += 2) {
+    result.push({ userId: raw[i], score: Number(raw[i + 1]) });
+  }
+  return result;
+}
 
-def get_rank(user_id):
-    rank = r.zrevrank('leaderboard', user_id)
-    return rank + 1 if rank is not None else None
+async function getRank(userId) {
+  const rank = await redis.zrevrank('leaderboard', userId);
+  return rank != null ? rank + 1 : null;
+}
 
-def get_score(user_id):
-    return r.zscore('leaderboard', user_id)
+async function getScore(userId) {
+  const score = await redis.zscore('leaderboard', userId);
+  return score != null ? Number(score) : null;
+}
 ```
 
 ### 4. Cache-Aside Pattern
 
-```python
-def get_user(user_id):
-    cache_key = f"user:{user_id}"
+```javascript
+async function getUser(userId) {
+  const cacheKey = `user:${userId}`;
 
-    # Try cache
-    cached = r.get(cache_key)
-    if cached:
-        return json.loads(cached)
+  // Try cache
+  const cached = await redis.get(cacheKey);
+  if (cached) {
+    return JSON.parse(cached);
+  }
 
-    # Cache miss → query DB
-    user = db.query("SELECT * FROM users WHERE id = ?", (user_id,))
-    if user:
-        r.setex(cache_key, 3600, json.dumps(user))
+  // Cache miss → query DB
+  const user = await db.query('SELECT * FROM users WHERE id = ?', [userId]);
+  if (user) {
+    await redis.setex(cacheKey, 3600, JSON.stringify(user));
+  }
 
-    return user
+  return user;
+}
 
-def update_user(user_id, data):
-    db.execute("UPDATE users SET ... WHERE id = ?", (user_id,))
+async function updateUser(userId, data) {
+  await db.execute('UPDATE users SET ... WHERE id = ?', [userId]);
 
-    # Invalidate cache
-    r.delete(f"user:{user_id}")
+  // Invalidate cache
+  await redis.del(`user:${userId}`);
+}
 ```
 
 ### 5. Distributed Lock
 
-```python
-import time
-import uuid
+```javascript
+async function acquireLock(lockName, timeoutSeconds = 10) {
+  const lockId = uuid();
+  const lockKey = `lock:${lockName}`;
 
-def acquire_lock(lock_name, timeout=10):
-    lock_id = str(uuid.uuid4())
-    lock_key = f"lock:{lock_name}"
+  // SET NX (only if not exists) with expiration
+  const acquired = await redis.set(lockKey, lockId, 'NX', 'EX', timeoutSeconds);
+  return acquired ? lockId : null;
+}
 
-    # SET NX (only if not exists) with expiration
-    acquired = r.set(lock_key, lock_id, nx=True, ex=timeout)
-    return lock_id if acquired else None
-
-def release_lock(lock_name, lock_id):
-    lock_key = f"lock:{lock_name}"
-
-    # Lua script для atomic check-and-delete
-    lua_script = """
+async function releaseLock(lockName, lockId) {
+  const lockKey = `lock:${lockName}`;
+  const script = `
     if redis.call('GET', KEYS[1]) == ARGV[1] then
         return redis.call('DEL', KEYS[1])
     else
         return 0
     end
-    """
+  `;
 
-    script = r.register_script(lua_script)
-    return script(keys=[lock_key], args=[lock_id])
+  return redis.eval(script, 1, lockKey, lockId);
+}
 
-# Usage
-lock_id = acquire_lock('resource:123')
-if lock_id:
-    try:
-        # Critical section
-        process_resource()
-    finally:
-        release_lock('resource:123', lock_id)
+// Usage
+const lockId = await acquireLock('resource:123');
+if (lockId) {
+  try {
+    // Critical section
+    await processResource();
+  } finally {
+    await releaseLock('resource:123', lockId);
+  }
+}
 ```
 
 ### 6. Queue (с Redis Lists)
 
-```python
-# Producer
-def enqueue(queue_name, task):
-    r.rpush(queue_name, json.dumps(task))
+```javascript
+// Producer
+async function enqueue(queueName, task) {
+  await redis.rpush(queueName, JSON.stringify(task));
+}
 
-# Consumer (blocking)
-def dequeue(queue_name, timeout=0):
-    result = r.blpop(queue_name, timeout=timeout)
-    if result:
-        queue, data = result
-        return json.loads(data)
-    return None
+// Consumer (blocking)
+async function dequeue(queueName, timeoutSeconds = 0) {
+  const result = await redis.blpop(queueName, timeoutSeconds);
+  if (!result) {
+    return null;
+  }
 
-# Usage
-enqueue('tasks', {'type': 'email', 'to': 'user@example.com'})
+  const [, data] = result;
+  return JSON.parse(data);
+}
 
-# Worker
-while True:
-    task = dequeue('tasks', timeout=5)
-    if task:
-        process_task(task)
+// Usage
+await enqueue('tasks', { type: 'email', to: 'user@example.com' });
+
+// Worker
+while (true) {
+  const task = await dequeue('tasks', 5);
+  if (task) {
+    await processTask(task);
+  }
+}
 ```
 
 ## Performance Optimization
 
 ### 1. Pipelining
 
-```python
-# Bad: 1000 round-trips
-for i in range(1000):
-    r.set(f'key:{i}', f'value:{i}')
+```javascript
+async function comparePipelining() {
+  // Bad: 1000 round-trips
+  for (let i = 0; i < 1000; i += 1) {
+    await redis.set(`key:${i}`, `value:${i}`);
+  }
 
-# Good: 1 round-trip
-pipe = r.pipeline()
-for i in range(1000):
-    pipe.set(f'key:{i}', f'value:{i}')
-pipe.execute()
+  // Good: 1 round-trip
+  const pipeline = redis.pipeline();
+  for (let i = 0; i < 1000; i += 1) {
+    pipeline.set(`key:${i}`, `value:${i}`);
+  }
+  await pipeline.exec();
+}
+
+comparePipelining().catch(console.error);
 ```
 
 ### 2. Connection Pooling
 
-```python
-# Connection pool (reuse connections)
-pool = redis.ConnectionPool(
-    host='localhost',
-    port=6379,
-    max_connections=50,
-    decode_responses=True
-)
+```javascript
+const genericPool = require('generic-pool');
 
-r = redis.Redis(connection_pool=pool)
+// Connection pool (reuse connections)
+const redisFactory = {
+  create: () =>
+    Promise.resolve(
+      new Redis({
+        host: 'localhost',
+        port: 6379,
+      }),
+    ),
+  destroy: (client) => client.quit(),
+};
+
+const redisPool = genericPool.createPool(redisFactory, {
+  min: 2,
+  max: 50,
+});
+
+async function withRedis(fn) {
+  const client = await redisPool.acquire();
+  try {
+    return await fn(client);
+  } finally {
+    redisPool.release(client);
+  }
+}
+
+await withRedis((client) => client.ping());
 ```
 
 ### 3. Compression
 
-```python
-import gzip
-import json
+```javascript
+const zlib = require('zlib');
 
-def set_compressed(key, data, ttl=3600):
-    json_data = json.dumps(data)
-    compressed = gzip.compress(json_data.encode())
-    r.setex(key, ttl, compressed)
+async function setCompressed(key, data, ttlSeconds = 3600) {
+  const jsonData = JSON.stringify(data);
+  const compressed = zlib.gzipSync(Buffer.from(jsonData));
+  await redis.set(key, compressed, 'EX', ttlSeconds);
+}
 
-def get_compressed(key):
-    compressed = r.get(key)
-    if compressed:
-        json_data = gzip.decompress(compressed).decode()
-        return json.loads(json_data)
-    return None
+async function getCompressed(key) {
+  const compressed = await redis.getBuffer(key);
+  if (!compressed) {
+    return null;
+  }
+
+  const jsonData = zlib.gunzipSync(compressed).toString();
+  return JSON.parse(jsonData);
+}
 ```
 
 ### 4. Hash Tags (Redis Cluster)
 
-```python
-# Ensure related keys on same slot
-# {user:123} → all with this tag on same slot
-r.set('{user:123}:profile', profile_data)
-r.set('{user:123}:settings', settings_data)
+```javascript
+async function ensureSameSlot() {
+  // Ensure related keys on same slot
+  // {user:123} → all with this tag on same slot
+  await redis.set('{user:123}:profile', profileData);
+  await redis.set('{user:123}:settings', settingsData);
 
-# Can use multi-key operations
-pipe = r.pipeline()
-pipe.get('{user:123}:profile')
-pipe.get('{user:123}:settings')
-pipe.execute()
+  // Can use multi-key operations
+  const pipeline = redis.pipeline();
+  pipeline.get('{user:123}:profile');
+  pipeline.get('{user:123}:settings');
+  await pipeline.exec();
+}
+
+ensureSameSlot().catch(console.error);
 ```
 
 ## Monitoring
@@ -657,25 +794,38 @@ redis-cli INFO
 
 ### Key Metrics
 
-```python
-info = r.info()
+```javascript
+async function gatherRedisInfo() {
+  const rawInfo = await redis.info();
+  const stats = Object.fromEntries(
+    rawInfo
+      .split('\n')
+      .filter((line) => line && !line.startsWith('#'))
+      .map((line) => line.split(':'))
+      .filter((parts) => parts.length === 2),
+  );
 
-# Memory
-used_memory = info['used_memory_human']
-maxmemory = info['maxmemory_human']
+  // Memory
+  const usedMemory = stats.used_memory_human;
+  const maxMemory = stats.maxmemory_human;
 
-# Hit rate
-hits = info['keyspace_hits']
-misses = info['keyspace_misses']
-hit_rate = hits / (hits + misses) if (hits + misses) > 0 else 0
+  // Hit rate
+  const hits = Number(stats.keyspace_hits || 0);
+  const misses = Number(stats.keyspace_misses || 0);
+  const hitRate = hits + misses > 0 ? hits / (hits + misses) : 0;
 
-# Connections
-connected_clients = info['connected_clients']
+  // Connections
+  const connectedClients = Number(stats.connected_clients || 0);
 
-# Commands/sec
-total_commands = info['total_commands_processed']
-uptime_seconds = info['uptime_in_seconds']
-commands_per_sec = total_commands / uptime_seconds
+  // Commands/sec
+  const totalCommands = Number(stats.total_commands_processed || 0);
+  const uptimeSeconds = Number(stats.uptime_in_seconds || 1);
+  const commandsPerSec = totalCommands / uptimeSeconds;
+
+  return { usedMemory, maxMemory, hitRate, connectedClients, commandsPerSec };
+}
+
+gatherRedisInfo().then(console.log).catch(console.error);
 ```
 
 ### Slow Log
@@ -709,29 +859,37 @@ session:abc123
 
 ### 2. Avoid Large Keys
 
-```python
-# Bad: huge hash
-r.hset('all_users', mapping={...})  # Millions of fields
+```javascript
+async function storeUsers() {
+  // Bad: huge hash
+  await redis.hset('all_users', largeUserMap); // Millions of fields
 
-# Good: separate keys
-r.set('user:123', data)
-r.set('user:456', data)
+  // Good: separate keys
+  await redis.set('user:123', data);
+  await redis.set('user:456', data);
+}
+
+storeUsers().catch(console.error);
 ```
 
 ### 3. Set Expiration
 
-```python
-# Always set TTL (avoid memory leak)
-r.setex('key', 3600, 'value')  # Expire in 1 hour
+```javascript
+async function setWithTtl() {
+  // Always set TTL (avoid memory leak)
+  await redis.set('key', 'value', 'EX', 3600); // Expire in 1 hour
+}
+
+setWithTtl().catch(console.error);
 ```
 
 ### 4. Use Appropriate Data Structures
 
-```python
-# Counters → String with INCR
-# Objects → Hash
-# Collections → Set or List
-# Leaderboards → Sorted Set
+```javascript
+// Counters → String with INCR
+// Objects → Hash
+// Collections → Set or List
+// Leaderboards → Sorted Set
 ```
 
 ### 5. Monitor Memory

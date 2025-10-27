@@ -293,81 +293,96 @@ class ItemBasedCF {
 
 Идея: представить матрицу user-item как произведение двух матриц меньшей размерности (embeddings).
 
-```python
-import numpy as np
+```javascript
+function randn(mean = 0, std = 1) {
+  let u = 0;
+  let v = 0;
+  while (u === 0) u = Math.random();
+  while (v === 0) v = Math.random();
+  const num = Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v);
+  return num * std + mean;
+}
 
-class MatrixFactorization:
-    def __init__(self, n_users, n_items, n_factors=50, learning_rate=0.01, reg=0.02):
-        self.n_factors = n_factors
-        self.lr = learning_rate
-        self.reg = reg
+function shuffle(array) {
+  for (let i = array.length - 1; i > 0; i -= 1) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [array[i], array[j]] = [array[j], array[i]];
+  }
+}
 
-        # Инициализация embeddings
-        self.user_factors = np.random.normal(0, 0.1, (n_users, n_factors))
-        self.item_factors = np.random.normal(0, 0.1, (n_items, n_factors))
-        self.user_bias = np.zeros(n_users)
-        self.item_bias = np.zeros(n_items)
-        self.global_bias = 0
+class MatrixFactorization {
+  constructor(nUsers, nItems, { nFactors = 50, learningRate = 0.01, reg = 0.02 } = {}) {
+    this.nFactors = nFactors;
+    this.learningRate = learningRate;
+    this.reg = reg;
 
-    def predict(self, user_id, item_id):
-        """Предсказание рейтинга"""
-        prediction = (
-            self.global_bias +
-            self.user_bias[user_id] +
-            self.item_bias[item_id] +
-            np.dot(self.user_factors[user_id], self.item_factors[item_id])
-        )
-        return prediction
+    this.userFactors = Array.from({ length: nUsers }, () =>
+      Array.from({ length: nFactors }, () => randn(0, 0.1)),
+    );
+    this.itemFactors = Array.from({ length: nItems }, () =>
+      Array.from({ length: nFactors }, () => randn(0, 0.1)),
+    );
+    this.userBias = Array.from({ length: nUsers }, () => 0);
+    this.itemBias = Array.from({ length: nItems }, () => 0);
+    this.globalBias = 0;
+  }
 
-    def train(self, interactions, n_epochs=20):
-        """
-        interactions: list of (user_id, item_id, rating)
-        """
-        for epoch in range(n_epochs):
-            np.random.shuffle(interactions)
-            total_loss = 0
+  static dot(a, b) {
+    return a.reduce((sum, value, index) => sum + value * b[index], 0);
+  }
 
-            for user_id, item_id, rating in interactions:
-                # Предсказание
-                pred = self.predict(user_id, item_id)
-                error = rating - pred
+  predict(userId, itemId) {
+    return (
+      this.globalBias +
+      this.userBias[userId] +
+      this.itemBias[itemId] +
+      MatrixFactorization.dot(this.userFactors[userId], this.itemFactors[itemId])
+    );
+  }
 
-                # Градиентный спуск
-                self.user_bias[user_id] += self.lr * (error - self.reg * self.user_bias[user_id])
-                self.item_bias[item_id] += self.lr * (error - self.reg * self.item_bias[item_id])
+  train(interactions, epochs = 20) {
+    for (let epoch = 0; epoch < epochs; epoch += 1) {
+      shuffle(interactions);
+      let totalLoss = 0;
 
-                user_factor_old = self.user_factors[user_id].copy()
+      for (const [userId, itemId, rating] of interactions) {
+        const prediction = this.predict(userId, itemId);
+        const error = rating - prediction;
 
-                self.user_factors[user_id] += self.lr * (
-                    error * self.item_factors[item_id] -
-                    self.reg * self.user_factors[user_id]
-                )
+        this.userBias[userId] += this.learningRate * (error - this.reg * this.userBias[userId]);
+        this.itemBias[itemId] += this.learningRate * (error - this.reg * this.itemBias[itemId]);
 
-                self.item_factors[item_id] += self.lr * (
-                    error * user_factor_old -
-                    self.reg * self.item_factors[item_id]
-                )
+        const userVector = this.userFactors[userId];
+        const itemVector = this.itemFactors[itemId];
+        const userVectorOld = [...userVector];
 
-                total_loss += error ** 2
+        for (let k = 0; k < this.nFactors; k += 1) {
+          userVector[k] += this.learningRate * (error * itemVector[k] - this.reg * userVector[k]);
+          itemVector[k] += this.learningRate * (error * userVectorOld[k] - this.reg * itemVector[k]);
+        }
 
-            rmse = np.sqrt(total_loss / len(interactions))
-            print(f"Epoch {epoch + 1}/{n_epochs}, RMSE: {rmse:.4f}")
+        totalLoss += error ** 2;
+      }
 
-    def recommend(self, user_id, n=10, exclude_items=None):
-        """Генерация рекомендаций для пользователя"""
-        if exclude_items is None:
-            exclude_items = set()
+      const rmse = Math.sqrt(totalLoss / interactions.length);
+      console.log(`Epoch ${epoch + 1}/${epochs}, RMSE: ${rmse.toFixed(4)}`);
+    }
+  }
 
-        scores = []
-        for item_id in range(len(self.item_factors)):
-            if item_id in exclude_items:
-                continue
+  recommend(userId, limit = 10, excludeItems = new Set()) {
+    const scores = [];
+    for (let itemId = 0; itemId < this.itemFactors.length; itemId += 1) {
+      if (excludeItems.has(itemId)) {
+        continue;
+      }
+      scores.push({ itemId, score: this.predict(userId, itemId) });
+    }
 
-            score = self.predict(user_id, item_id)
-            scores.append((item_id, score))
-
-        scores.sort(key=lambda x: x[1], reverse=True)
-        return scores[:n]
+    return scores
+      .sort((a, b) => b.score - a.score)
+      .slice(0, limit);
+  }
+}
 ```
 
 **Использование в production:**
@@ -517,55 +532,44 @@ class ContentBasedRecommender {
 
 Современный подход: обучить две нейросети — одну для user embeddings, другую для item embeddings.
 
-```python
-import tensorflow as tf
+```javascript
+const tf = require('@tensorflow/tfjs-node');
 
-class TwoTowerModel(tf.keras.Model):
-    def __init__(self, user_vocab_size, item_vocab_size, embedding_dim=128):
-        super().__init__()
+class TwoTowerModel {
+  constructor(userVocabSize, itemVocabSize, embeddingDim = 128) {
+    // User tower
+    const userInput = tf.input({ shape: [], dtype: 'int32', name: 'user_id' });
+    let userVector = tf.layers.embedding({ inputDim: userVocabSize, outputDim: 64 })(userInput);
+    userVector = tf.layers.dense({ units: 128, activation: 'relu' })(userVector);
+    userVector = tf.layers.dense({ units: embeddingDim })(userVector);
+    userVector = tf.layers.lambda(({ x }) => tf.linalg.l2Normalize(x, -1))({ x: userVector });
 
-        # User Tower
-        self.user_embedding = tf.keras.layers.Embedding(user_vocab_size, 64)
-        self.user_dense1 = tf.keras.layers.Dense(128, activation='relu')
-        self.user_dense2 = tf.keras.layers.Dense(embedding_dim)
+    // Item tower
+    const itemInput = tf.input({ shape: [], dtype: 'int32', name: 'item_id' });
+    let itemVector = tf.layers.embedding({ inputDim: itemVocabSize, outputDim: 64 })(itemInput);
+    itemVector = tf.layers.dense({ units: 128, activation: 'relu' })(itemVector);
+    itemVector = tf.layers.dense({ units: embeddingDim })(itemVector);
+    itemVector = tf.layers.lambda(({ x }) => tf.linalg.l2Normalize(x, -1))({ x: itemVector });
 
-        # Item Tower
-        self.item_embedding = tf.keras.layers.Embedding(item_vocab_size, 64)
-        self.item_dense1 = tf.keras.layers.Dense(128, activation='relu')
-        self.item_dense2 = tf.keras.layers.Dense(embedding_dim)
+    const dotProduct = tf.layers.dot({ axes: -1 })([userVector, itemVector]);
 
-    def call(self, inputs):
-        user_id = inputs['user_id']
-        item_id = inputs['item_id']
+    this.model = tf.model({ inputs: [userInput, itemInput], outputs: dotProduct });
+    this.model.compile({
+      optimizer: tf.train.adam(),
+      loss: tf.losses.sigmoidCrossEntropy,
+      metrics: ['accuracy'],
+    });
+  }
 
-        # User Tower
-        user_emb = self.user_embedding(user_id)
-        user_emb = self.user_dense1(user_emb)
-        user_vector = self.user_dense2(user_emb)
-        user_vector = tf.nn.l2_normalize(user_vector, axis=1)
+  async train(dataset, epochs = 10, validationData) {
+    return this.model.fitDataset(dataset, { epochs, validationData });
+  }
+}
 
-        # Item Tower
-        item_emb = self.item_embedding(item_id)
-        item_emb = self.item_dense1(item_emb)
-        item_vector = self.item_dense2(item_emb)
-        item_vector = tf.nn.l2_normalize(item_vector, axis=1)
-
-        # Dot product
-        logits = tf.reduce_sum(user_vector * item_vector, axis=1)
-
-        return logits
-
-# Обучение
-model = TwoTowerModel(user_vocab_size=100000, item_vocab_size=50000)
-model.compile(
-    optimizer='adam',
-    loss=tf.keras.losses.BinaryCrossentropy(from_logits=True),
-    metrics=['accuracy']
-)
-
-# Training data: (user_id, item_id, label)
-# label = 1 if interaction, 0 if negative sample
-model.fit(train_dataset, epochs=10, validation_data=val_dataset)
+// Training data: (user_id, item_id, label)
+// label = 1 if interaction, 0 if negative sample
+const model = new TwoTowerModel(100_000, 50_000);
+await model.train(trainDataset, 10, valDataset);
 ```
 
 ---
@@ -1004,132 +1008,120 @@ app.listen(3000, () => console.log('Recommendation API running on port 3000'));
 
 ## Offline Training Pipeline (Spark)
 
-```python
-from pyspark.sql import SparkSession
-from pyspark.ml.recommendation import ALS
-from pyspark.ml.evaluation import RegressionEvaluator
+```javascript
+const fs = require('fs/promises');
+const path = require('path');
+const { Redis } = require('ioredis');
+const pl = require('@polars/wasm');
 
-class OfflineTrainingPipeline:
-    def __init__(self):
-        self.spark = SparkSession.builder \
-            .appName("RecommendationTraining") \
-            .getOrCreate()
+class OfflineTrainingPipeline {
+  constructor({ dataRoot, redisUrl }) {
+    this.dataRoot = dataRoot;
+    this.redis = new Redis(redisUrl);
+  }
 
-    def load_interactions(self, date_from, date_to):
-        """Загрузка interactions из data lake"""
-        df = self.spark.read.parquet(f"s3://datalake/interactions/dt={date_from}/*")
+  async loadInteractions(dateFrom, dateTo) {
+    const filePath = path.join(this.dataRoot, `dt=${dateFrom}`);
+    const frame = await pl.readParquet(`${filePath}/interactions.parquet`);
 
-        # Фильтрация и преобразование
-        interactions = df.filter(
-            (df.interaction_type.isin(['view', 'purchase', 'add_to_cart'])) &
-            (df.created_at >= date_from) &
-            (df.created_at < date_to)
-        ).select(
-            df.user_id.cast('integer').alias('userId'),
-            df.item_id.cast('integer').alias('itemId'),
-            df.rating.cast('float')  # implicit feedback → rating
-        )
+    return frame
+      .filter(pl.col('created_at').isBetween(dateFrom, dateTo))
+      .filter(pl.col('interaction_type').isIn(['view', 'purchase', 'add_to_cart']))
+      .select([
+        pl.col('user_id').cast(pl.Int32).alias('userId'),
+        pl.col('item_id').cast(pl.Int32).alias('itemId'),
+        pl.col('rating').cast(pl.Float64),
+      ])
+      .toArray();
+  }
 
-        return interactions
+  async trainModel(interactions) {
+    const userIds = new Set();
+    const itemIds = new Set();
+    for (const row of interactions) {
+      userIds.add(row.userId);
+      itemIds.add(row.itemId);
+    }
 
-    def train_als_model(self, interactions):
-        """Обучение ALS (Alternating Least Squares)"""
-        train, test = interactions.randomSplit([0.8, 0.2], seed=42)
+    const model = new MatrixFactorization(userIds.size, itemIds.size, {
+      nFactors: 64,
+      learningRate: 0.01,
+      reg: 0.02,
+    });
 
-        als = ALS(
-            maxIter=10,
-            regParam=0.1,
-            userCol='userId',
-            itemCol='itemId',
-            ratingCol='rating',
-            coldStartStrategy='drop',
-            nonnegative=True,
-            implicitPrefs=True  # implicit feedback
-        )
+    model.train(interactions.map((row) => [row.userId, row.itemId, row.rating]), 15);
+    return model;
+  }
 
-        model = als.fit(train)
+  generateItemSimilarities(model, threshold = 0.5, topK = 20) {
+    const similarities = new Map();
+    const items = model.itemFactors.length;
 
-        # Evaluation
-        predictions = model.transform(test)
-        evaluator = RegressionEvaluator(
-            metricName='rmse',
-            labelCol='rating',
-            predictionCol='prediction'
-        )
-        rmse = evaluator.evaluate(predictions)
-        print(f"RMSE on test set: {rmse}")
+    for (let i = 0; i < items; i += 1) {
+      const scores = [];
+      for (let j = i + 1; j < items; j += 1) {
+        const score = MatrixFactorization.dot(model.itemFactors[i], model.itemFactors[j]);
+        if (score > threshold) {
+          scores.push({ itemId: j, score });
+        }
+      }
 
-        return model
+      similarities.set(
+        i,
+        scores
+          .sort((a, b) => b.score - a.score)
+          .slice(0, topK),
+      );
+    }
 
-    def generate_item_similarities(self, model):
-        """Генерация item-to-item similarities"""
-        item_factors = model.itemFactors
+    return similarities;
+  }
 
-        # Cross join для вычисления всех пар (оптимизировать для production)
-        from pyspark.sql.functions import col, udf
-        from pyspark.sql.types import FloatType
-        import numpy as np
+  async exportToRedis(similarities) {
+    const pipeline = this.redis.pipeline();
+    let count = 0;
 
-        def cosine_sim(vec1, vec2):
-            return float(np.dot(vec1, vec2) / (np.linalg.norm(vec1) * np.linalg.norm(vec2)))
+    for (const [itemId, neighbours] of similarities.entries()) {
+      if (!neighbours.length) continue;
+      const payload = neighbours.reduce((acc, neighbour) => {
+        acc[neighbour.itemId] = neighbour.score;
+        return acc;
+      }, {});
 
-        cosine_udf = udf(cosine_sim, FloatType())
+      pipeline.zadd(`similar:${itemId}`, payload);
+      count += neighbours.length;
+    }
 
-        similarities = item_factors.alias('a').join(
-            item_factors.alias('b'),
-            col('a.id') < col('b.id')
-        ).select(
-            col('a.id').alias('item1'),
-            col('b.id').alias('item2'),
-            cosine_udf(col('a.features'), col('b.features')).alias('similarity')
-        ).filter(col('similarity') > 0.5)  # Только значимые
+    await pipeline.exec();
+    console.log(`Exported ${count} similarities to Redis`);
+  }
 
-        return similarities
+  async saveModel(model, outputPath) {
+    await fs.mkdir(outputPath, { recursive: true });
+    await fs.writeFile(path.join(outputPath, 'userFactors.json'), JSON.stringify(model.userFactors));
+    await fs.writeFile(path.join(outputPath, 'itemFactors.json'), JSON.stringify(model.itemFactors));
+    await fs.writeFile(path.join(outputPath, 'metadata.json'), JSON.stringify({
+      userBias: model.userBias,
+      itemBias: model.itemBias,
+      globalBias: model.globalBias,
+    }));
+  }
 
-    def export_to_redis(self, similarities):
-        """Экспорт similarities в Redis"""
-        # Группировка топ-20 для каждого товара
-        from pyspark.sql.window import Window
-        from pyspark.sql.functions import row_number
+  async run() {
+    const interactions = await this.loadInteractions('2025-09-01', '2025-10-26');
+    const model = await this.trainModel(interactions);
+    const similarities = this.generateItemSimilarities(model);
+    await this.exportToRedis(similarities);
+    await this.saveModel(model, path.join('models', 'als-model-2025-10-26'));
+  }
+}
 
-        window = Window.partitionBy('item1').orderBy(col('similarity').desc())
+const pipeline = new OfflineTrainingPipeline({
+  dataRoot: 's3://datalake/interactions',
+  redisUrl: 'redis://redis.example.com:6379',
+});
 
-        top_similar = similarities.withColumn('rank', row_number().over(window)) \
-            .filter(col('rank') <= 20) \
-            .collect()
-
-        # Bulk insert в Redis
-        import redis
-        r = redis.Redis(host='redis.example.com')
-
-        pipe = r.pipeline()
-        for row in top_similar:
-            pipe.zadd(f"similar:{row.item1}", {row.item2: row.similarity})
-        pipe.execute()
-
-        print(f"Exported {len(top_similar)} similarities to Redis")
-
-    def run_pipeline(self):
-        # 1. Load data
-        interactions = self.load_interactions('2025-09-01', '2025-10-26')
-
-        # 2. Train model
-        model = self.train_als_model(interactions)
-
-        # 3. Generate similarities
-        similarities = self.generate_item_similarities(model)
-
-        # 4. Export to Redis
-        self.export_to_redis(similarities)
-
-        # 5. Save model
-        model.save("s3://models/als-model-2025-10-26")
-
-        print("Pipeline completed successfully")
-
-# Запуск
-pipeline = OfflineTrainingPipeline()
-pipeline.run_pipeline()
+await pipeline.run();
 ```
 
 ---
