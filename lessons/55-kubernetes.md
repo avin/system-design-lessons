@@ -1028,14 +1028,6 @@ spec:
 
 ---
 
-## Что почитать дальше?
-
-1. **Урок 54: Deployment Strategies** — rolling updates, canary
-2. **Урок 56: Disaster Recovery** — backup, restore, failover
-3. **Урок 57: Security Best Practices** — security в production
-
----
-
 ## Проверь себя
 
 1. Что такое QoS Classes в Kubernetes (Guaranteed, Burstable, BestEffort)?

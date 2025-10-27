@@ -890,13 +890,6 @@ kubectl apply -f deployment.yaml
 | **A/B Testing** | ✓ | Fast | Medium | High |
 | **Shadow** | ✓ | N/A (testing) | High (2x) | High |
 
----
-
-## Что почитать дальше?
-
-1. **Урок 53: Monitoring и Observability** — мониторинг deployments
-2. **Урок 55: Kubernetes в Production** — production-ready k8s
-3. **Урок 26: Circuit Breaker** — resilience при deployments
 
 ---
 

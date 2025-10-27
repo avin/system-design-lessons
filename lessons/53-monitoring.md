@@ -1159,14 +1159,6 @@ class SLOTracker {
 
 ---
 
-## Что почитать дальше?
-
-1. **Урок 54: Deployment Strategies** — rolling updates, blue-green, canary
-2. **Урок 55: Kubernetes в Production** — production-ready k8s
-3. **Урок 56: Disaster Recovery** — backup, restore, failover
-
----
-
 ## Проверь себя
 
 1. В чём разница между Monitoring и Observability?

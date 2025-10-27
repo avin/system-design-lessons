@@ -1358,14 +1358,6 @@ async getRealTimeRecommendations(userId, sessionItems) {
 
 ---
 
-## Что почитать дальше?
-
-1. **Урок 44: Search Engine** — BM25 ranking, Elasticsearch
-2. **Урок 46: Newsfeed** — персонализированная лента
-3. **Урок 53: Monitoring и Observability** — мониторинг ML моделей
-
----
-
 ## Проверь себя
 
 1. В чём разница между User-Based и Item-Based Collaborative Filtering?
